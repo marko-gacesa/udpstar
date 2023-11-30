@@ -1,0 +1,234 @@
+// Copyright (c) 2023 by Marko Gaćeša
+
+package client
+
+import (
+	"context"
+	"errors"
+	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"golang.org/x/sync/errgroup"
+	"log/slog"
+	"reflect"
+	"sync"
+	"testing"
+	"time"
+)
+
+var errStop = errors.New("STOP")
+
+func TestActionService_Send(t *testing.T) {
+	const (
+		tokenSession = 1
+		tokenStory   = 1
+		tokenActor   = 1
+	)
+
+	inputCh := make(chan []byte)
+	actors := []Actor{
+		{
+			Token:   tokenActor,
+			Story:   StoryInfo{Token: tokenStory},
+			InputCh: inputCh,
+		},
+	}
+
+	var msgRec messageRecorder
+	lat := latencyFixed(100 * time.Millisecond)
+
+	actionSrv := newActionService(actors, &msgRec, lat, slog.Default())
+
+	g, ctx := errgroup.WithContext(context.Background())
+
+	g.Go(func() error {
+		return actionSrv.Start(ctx)
+	})
+
+	action1 := sequence.Entry{Seq: 1, Payload: []byte("ABC")}
+	action2 := sequence.Entry{Seq: 2, Payload: []byte("XY")}
+	action3 := sequence.Entry{Seq: 3, Payload: []byte("Z")}
+
+	g.Go(func() error {
+		inputCh <- action1.Payload
+		// send message: [action1]
+
+		time.Sleep(10 * time.Millisecond)
+
+		inputCh <- action2.Payload
+		// send message: [action1, action2]
+
+		time.Sleep(100 * time.Millisecond)
+
+		actionSrv.ConfirmActions(ctx, &message.ActionConfirm{
+			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+			ActorToken:   tokenActor,
+			LastSequence: 1,
+			Missing:      nil,
+		})
+		// server confirmed action=1, sends nothing
+
+		time.Sleep(140 * time.Millisecond)
+		// waited too long (latency is set to 100ms), the timer fired, resend recent messages: [action2]
+
+		actionSrv.ConfirmActions(ctx, &message.ActionConfirm{
+			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+			ActorToken:   tokenActor,
+			LastSequence: 2,
+			Missing:      nil,
+		})
+		// server confirmed action=2, sends nothing
+
+		time.Sleep(140 * time.Millisecond)
+		// the timer fired, nothing to send
+
+		inputCh <- action3.Payload
+		// send message: [action3]
+
+		close(inputCh)
+
+		time.Sleep(140 * time.Millisecond)
+		// waited too long (latency is set to 100ms), the timer fired, resend recent messages: [action3]
+
+		return errStop
+	})
+
+	g.Wait()
+
+	wantActions := [][]sequence.Entry{
+		{action1},
+		{action1, action2},
+		{action2},
+		{action3},
+		{action3},
+	}
+
+	compareActions(t, actors, wantActions, msgRec)
+}
+
+func TestActionService_Missing(t *testing.T) {
+	const (
+		tokenSession = 1
+		tokenStory   = 1
+		tokenActor   = 1
+	)
+
+	inputCh := make(chan []byte)
+	actors := []Actor{
+		{
+			Token:   tokenActor,
+			Story:   StoryInfo{Token: tokenStory},
+			InputCh: inputCh,
+		},
+	}
+
+	var msgRec messageRecorder
+	lat := latencyFixed(100 * time.Millisecond)
+
+	actionSrv := newActionService(actors, &msgRec, lat, slog.Default())
+
+	g, ctx := errgroup.WithContext(context.Background())
+
+	g.Go(func() error {
+		return actionSrv.Start(ctx)
+	})
+
+	action1 := sequence.Entry{Seq: 1, Payload: []byte("ABC")}
+	action2 := sequence.Entry{Seq: 2, Payload: []byte("XY")}
+	action3 := sequence.Entry{Seq: 3, Payload: []byte("Z")}
+
+	g.Go(func() error {
+		inputCh <- action1.Payload
+		// send message: [action1]
+
+		time.Sleep(10 * time.Millisecond)
+
+		inputCh <- action2.Payload
+		// send message: [action1, action2]
+
+		time.Sleep(10 * time.Millisecond)
+
+		inputCh <- action3.Payload
+		// send message: [action1, action2, action3]
+
+		time.Sleep(10 * time.Millisecond)
+
+		actionSrv.ConfirmActions(ctx, &message.ActionConfirm{
+			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+			ActorToken:   1,
+			LastSequence: 0,
+			Missing:      []sequence.Range{sequence.RangeInclusive(1, 2)},
+		})
+		// server says that it has the seq=1, but it's missing seq=1 and 2: immediately resend: [action1, action2]
+
+		close(inputCh)
+
+		time.Sleep(10 * time.Millisecond)
+
+		return errStop
+	})
+
+	g.Wait()
+
+	wantActions := [][]sequence.Entry{
+		{action1},
+		{action1, action2},
+		{action1, action2, action3},
+		{action1, action2},
+	}
+
+	compareActions(t, actors, wantActions, msgRec)
+}
+
+func compareActions(t *testing.T, actors []Actor, wantActions [][]sequence.Entry, msgRec messageRecorder) {
+	if want, got := len(wantActions), len(msgRec.Messages); want != got {
+		t.Errorf("message count mismatch: want=%d got=%d", want, got)
+		size := min(len(wantActions), len(msgRec.Messages))
+		wantActions = wantActions[:size]
+		msgRec.Messages = msgRec.Messages[:size]
+	}
+
+	for i, msg := range msgRec.Messages {
+		msgActionPack, ok := msg.(*message.ActionPack)
+		if !ok {
+			t.Errorf("message %d not action pack", i)
+			continue
+		}
+
+		t.Logf("action=%d actor=%d actions=%v", i, msgActionPack.ActorToken, msgActionPack.Actions)
+
+		if want, got := actors[0].Token, msgActionPack.ActorToken; want != got {
+			t.Errorf("actor token mismatch: want=%d got=%d", want, got)
+		}
+
+		if want, got := len(wantActions[i]), len(msgActionPack.Actions); want != got {
+			t.Errorf("message %d action pack count mismatch: want=%d got=%d", i, want, got)
+			continue
+		}
+
+		for j := range msgActionPack.Actions {
+			if want, got := wantActions[i][j].Seq, msgActionPack.Actions[j].Seq; want != got {
+				t.Errorf("message %d action %d seq mismatch: want=%d got=%d", i, j, want, got)
+			}
+			if want, got := wantActions[i][j].Payload, msgActionPack.Actions[j].Payload; !reflect.DeepEqual(want, got) {
+				t.Errorf("message %d action %d payload mismatch: want=%v got=%v", i, j, want, got)
+			}
+		}
+	}
+}
+
+type messageRecorder struct {
+	mx       sync.Mutex
+	Messages []message.ClientMessage
+}
+
+func (s *messageRecorder) Send(message message.ClientMessage) {
+	s.mx.Lock()
+	s.Messages = append(s.Messages, message)
+	s.mx.Unlock()
+}
+
+type latencyFixed time.Duration
+
+func (l latencyFixed) Latency() time.Duration {
+	return time.Duration(l)
+}
