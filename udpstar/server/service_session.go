@@ -5,9 +5,9 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/marko-gacesa/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
-	"github.com/marko-gacesa/udpstar/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
@@ -113,11 +113,11 @@ func (s *sessionService) Start(ctx context.Context) error {
 }
 
 func (s *sessionService) start(ctx context.Context) error {
-	storyEntryCh := joinchannel.Slice(ctx, s.stories, func(story *storyData) <-chan []byte {
+	storyEntryCh := joinchannel.SlicePtr(ctx, s.stories, func(story *storyData) <-chan []byte {
 		return story.Channel
 	})
 
-	localActorActionCh := joinchannel.Slice(ctx, s.localActors, func(actor *localActorData) <-chan []byte {
+	localActorActionCh := joinchannel.SlicePtr(ctx, s.localActors, func(actor *localActorData) <-chan []byte {
 		return actor.InputCh
 	})
 
@@ -128,7 +128,7 @@ func (s *sessionService) start(ctx context.Context) error {
 			return ctx.Err()
 
 		case storyEntryData := <-storyEntryCh:
-			story := &s.stories[storyEntryData.Idx]
+			story := &s.stories[storyEntryData.ID]
 
 			entry := story.Enum.Push(storyEntryData.Data)
 			story.History.Push(entry)
@@ -192,7 +192,7 @@ func (s *sessionService) start(ctx context.Context) error {
 				return errors.New("local actor action channel closed")
 			}
 
-			actor := &s.localActors[actorActionData.Idx]
+			actor := &s.localActors[actorActionData.ID]
 
 			action := actorActionData.Data
 			actor.Channel <- action
@@ -295,9 +295,9 @@ func (s *sessionService) UpdateState(ctx context.Context) *message.LatencyReport
 
 	if s.controller != nil {
 		if s.state == SessionStateNotInSync && newState != SessionStateNotInSync {
-			s.controller.Resume()
+			s.controller.Resume(ctx)
 		} else if s.state != SessionStateNotInSync && newState == SessionStateNotInSync {
-			s.controller.Suspend()
+			s.controller.Suspend(ctx)
 		}
 	}
 

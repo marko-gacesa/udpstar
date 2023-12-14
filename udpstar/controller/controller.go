@@ -2,7 +2,10 @@
 
 package controller
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 const (
 	ActionBufferCapacity = 32
@@ -10,6 +13,6 @@ const (
 )
 
 type Controller interface {
-	Suspend()
-	Resume()
+	Suspend(context.Context)
+	Resume(context.Context)
 }

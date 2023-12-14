@@ -18,19 +18,19 @@ func TestSlice(t *testing.T) {
 		name     string
 		input    []testStruct
 		scenario func([]testStruct)
-		want     []SliceData[int]
+		want     []Result[int, int]
 	}{
 		{
 			name:     "empty",
 			input:    []testStruct{},
 			scenario: func([]testStruct) {},
-			want:     []SliceData[int]{},
+			want:     []Result[int, int]{},
 		},
 		{
 			name:     "nil",
 			input:    []testStruct{{}, {}},
 			scenario: func([]testStruct) {},
-			want:     []SliceData[int]{},
+			want:     []Result[int, int]{},
 		},
 		{
 			name: "two-channels",
@@ -45,10 +45,10 @@ func TestSlice(t *testing.T) {
 				time.Sleep(time.Millisecond)
 				structs[1].ch <- 13
 			},
-			want: []SliceData[int]{
-				{Data: 42, Idx: 1},
-				{Data: 66, Idx: 0},
-				{Data: 13, Idx: 1},
+			want: []Result[int, int]{
+				{Data: 42, ID: 1},
+				{Data: 66, ID: 0},
+				{Data: 13, ID: 1},
 			},
 		},
 		{
@@ -71,11 +71,11 @@ func TestSlice(t *testing.T) {
 				time.Sleep(time.Millisecond)
 				close(structs[2].ch)
 			},
-			want: []SliceData[int]{
-				{Data: 1, Idx: 1},
-				{Data: 2, Idx: 2},
-				{Data: 3, Idx: 0},
-				{Data: 4, Idx: 2},
+			want: []Result[int, int]{
+				{Data: 1, ID: 1},
+				{Data: 2, ID: 2},
+				{Data: 3, ID: 0},
+				{Data: 4, ID: 2},
 			},
 		},
 	}
@@ -83,7 +83,7 @@ func TestSlice(t *testing.T) {
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			ctx, cancelFn := context.WithCancel(context.Background())
-			ch := Slice(ctx, test.input, func(el *testStruct) <-chan int {
+			ch := SlicePtr(ctx, test.input, func(el *testStruct) <-chan int {
 				return el.ch
 			})
 
@@ -92,7 +92,7 @@ func TestSlice(t *testing.T) {
 				test.scenario(test.input)
 			}()
 
-			got := make([]SliceData[int], 0)
+			got := make([]Result[int, int], 0)
 			for v := range ch {
 				got = append(got, v)
 			}
@@ -109,19 +109,19 @@ func TestMap(t *testing.T) {
 		name     string
 		input    map[string]chan int
 		scenario func(map[string]chan int)
-		want     []MapData[int, string]
+		want     []Result[int, string]
 	}{
 		{
 			name:     "empty",
 			input:    map[string]chan int{},
 			scenario: func(map[string]chan int) {},
-			want:     []MapData[int, string]{},
+			want:     []Result[int, string]{},
 		},
 		{
 			name:     "nil",
 			input:    map[string]chan int{"a": nil, "b": nil},
 			scenario: func(map[string]chan int) {},
-			want:     []MapData[int, string]{},
+			want:     []Result[int, string]{},
 		},
 		{
 			name: "two-channels",
@@ -136,10 +136,10 @@ func TestMap(t *testing.T) {
 				time.Sleep(time.Millisecond)
 				m["b"] <- 13
 			},
-			want: []MapData[int, string]{
-				{Data: 42, Key: "b"},
-				{Data: 66, Key: "a"},
-				{Data: 13, Key: "b"},
+			want: []Result[int, string]{
+				{Data: 42, ID: "b"},
+				{Data: 66, ID: "a"},
+				{Data: 13, ID: "b"},
 			},
 		},
 		{
@@ -162,11 +162,11 @@ func TestMap(t *testing.T) {
 				time.Sleep(time.Millisecond)
 				close(m["c"])
 			},
-			want: []MapData[int, string]{
-				{Data: 1, Key: "b"},
-				{Data: 2, Key: "c"},
-				{Data: 3, Key: "a"},
-				{Data: 4, Key: "c"},
+			want: []Result[int, string]{
+				{Data: 1, ID: "b"},
+				{Data: 2, ID: "c"},
+				{Data: 3, ID: "a"},
+				{Data: 4, ID: "c"},
 			},
 		},
 	}
@@ -183,7 +183,7 @@ func TestMap(t *testing.T) {
 				test.scenario(test.input)
 			}()
 
-			got := make([]MapData[int, string], 0)
+			got := make([]Result[int, string], 0)
 			for v := range ch {
 				got = append(got, v)
 			}

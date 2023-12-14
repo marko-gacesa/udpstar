@@ -5,9 +5,9 @@ package client
 import (
 	"context"
 	"errors"
+	"github.com/marko-gacesa/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
-	"github.com/marko-gacesa/udpstar/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"log/slog"
 	"time"
@@ -44,11 +44,11 @@ func newActionService(
 func (s *actionService) Start(ctx context.Context) error {
 	const pushbackDelay = 30 * time.Millisecond
 
-	actorActionCh := joinchannel.Slice(ctx, s.actorActions, func(actor *actorAction) <-chan []byte {
+	actorActionCh := joinchannel.SlicePtr(ctx, s.actorActions, func(actor *actorAction) <-chan []byte {
 		return actor.InputCh
 	})
 
-	resendTimerCh := joinchannel.Slice(ctx, s.actorActions, func(actor *actorAction) <-chan time.Time {
+	resendTimerCh := joinchannel.SlicePtr(ctx, s.actorActions, func(actor *actorAction) <-chan time.Time {
 		return actor.resend.C
 	})
 
@@ -64,7 +64,7 @@ func (s *actionService) Start(ctx context.Context) error {
 				return errors.New("action channel closed")
 			}
 
-			actor := &s.actorActions[actorActionData.Idx]
+			actor := &s.actorActions[actorActionData.ID]
 			actor.resetResendTimer(pushbackDelay + s.latency.Latency())
 
 			entry := actor.enum.Push(actorActionData.Data)
@@ -77,7 +77,7 @@ func (s *actionService) Start(ctx context.Context) error {
 				return errors.New("resend timer channel closed")
 			}
 
-			actor := &s.actorActions[timeData.Idx]
+			actor := &s.actorActions[timeData.ID]
 
 			actionCount := s.sendActions(actor)
 			if actionCount > 0 {

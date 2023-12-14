@@ -5,8 +5,8 @@ package client
 import (
 	"context"
 	"errors"
+	"github.com/marko-gacesa/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"log/slog"
 	"slices"
@@ -42,7 +42,7 @@ func newStoryService(
 func (s *storyService) Start(ctx context.Context) error {
 	const requestDelay = time.Second
 
-	requestTimer := joinchannel.Slice(ctx, s.storyStreams, func(story *storyStream) <-chan time.Time {
+	requestTimer := joinchannel.SlicePtr(ctx, s.storyStreams, func(story *storyStream) <-chan time.Time {
 		return story.request.C
 	})
 
@@ -58,7 +58,7 @@ func (s *storyService) Start(ctx context.Context) error {
 				return errors.New("request timer channel closed")
 			}
 
-			story := &s.storyStreams[timeData.Idx]
+			story := &s.storyStreams[timeData.ID]
 
 			lastSeq := story.stream.Sequence()
 			s.sendConfirm(story.story.Token, lastSeq, &story.missing)
