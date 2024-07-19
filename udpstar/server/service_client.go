@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package server
 
@@ -7,6 +7,7 @@ import (
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"net"
@@ -21,14 +22,14 @@ type clientService struct {
 
 	remoteActors []remoteActorData
 
-	sendCh       chan message.ServerMessage
+	sendCh       chan storymessage.ServerMessage
 	dataUpdateCh chan clientData
 	dataGetCh    chan chan<- clientStatePackage
 
 	udpSender udpSender
 	log       *slog.Logger
 
-	state message.ClientState
+	state storymessage.ClientState
 }
 
 type clientData struct {
@@ -38,7 +39,7 @@ type clientData struct {
 }
 
 type clientStatePackage struct {
-	State   message.ClientState
+	State   storymessage.ClientState
 	Latency time.Duration
 }
 
@@ -57,14 +58,14 @@ func newClientService(
 	c.Token = client.Token
 	c.Session = session
 
-	c.state = message.ClientStateNew
+	c.state = storymessage.ClientStateNew
 
 	c.remoteActors = make([]remoteActorData, len(client.Actors))
 	for i := range c.remoteActors {
 		c.remoteActors[i] = newRemoteActorData(client.Actors[i])
 	}
 
-	c.sendCh = make(chan message.ServerMessage)
+	c.sendCh = make(chan storymessage.ServerMessage)
 	c.dataUpdateCh = make(chan clientData)
 	c.dataGetCh = make(chan chan<- clientStatePackage)
 
@@ -75,11 +76,11 @@ func newClientService(
 }
 
 func (c *clientService) Start(ctx context.Context) error {
-	if c.state != message.ClientStateNew {
+	if c.state != storymessage.ClientStateNew {
 		return ErrAlreadyStarted
 	}
 
-	c.state = message.ClientStateLost
+	c.state = storymessage.ClientStateLost
 
 	const bufferSize = 4 << 10
 	var buffer [bufferSize]byte
@@ -87,23 +88,23 @@ func (c *clientService) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			c.state = message.ClientStateLost
+			c.state = storymessage.ClientStateLost
 			return ctx.Err()
 
 		case c.data = <-c.dataUpdateCh:
 			if c.data.Latency > 50*time.Millisecond {
-				c.state = message.ClientStateLagging
+				c.state = storymessage.ClientStateLagging
 			} else {
-				c.state = message.ClientStateGood
+				c.state = storymessage.ClientStateGood
 			}
 
 		case ch := <-c.dataGetCh:
 			if !c.data.LastMsgReceived.IsZero() {
 				dur := time.Since(c.data.LastMsgReceived)
 				if dur > 3*time.Second {
-					c.state = message.ClientStateLost
+					c.state = storymessage.ClientStateLost
 				} else if dur > 500*time.Millisecond {
-					c.state = message.ClientStateLagging
+					c.state = storymessage.ClientStateLagging
 				}
 			}
 
@@ -113,14 +114,14 @@ func (c *clientService) Start(ctx context.Context) error {
 			}
 
 		case msg := <-c.sendCh:
-			if c.state == message.ClientStateNew || c.data.Address.Port == 0 || len(c.data.Address.IP) == 0 {
+			if c.state == storymessage.ClientStateNew || c.data.Address.Port == 0 || len(c.data.Address.IP) == 0 {
 				continue
 			}
 
 			func() {
 				defer util.Recover(c.log)
 
-				size := message.SerializeServer(msg, buffer[:])
+				size := msg.Encode(buffer[:])
 				err := c.udpSender.Send(buffer[:size], c.data.Address)
 				if err != nil {
 					c.log.With(
@@ -135,7 +136,7 @@ func (c *clientService) Start(ctx context.Context) error {
 	}
 }
 
-func (c *clientService) Send(ctx context.Context, msg message.ServerMessage) {
+func (c *clientService) Send(ctx context.Context, msg storymessage.ServerMessage) {
 	select {
 	case <-ctx.Done():
 	case c.sendCh <- msg:
@@ -168,8 +169,8 @@ func (c *clientService) GetState(ctx context.Context) clientStatePackage {
 
 func (c *clientService) HandleActionPack(
 	ctx context.Context,
-	msgActionPack *message.ActionPack,
-) (message.ActionConfirm, error) {
+	msgActionPack *storymessage.ActionPack,
+) (storymessage.ActionConfirm, error) {
 	var actor *remoteActorData
 	for i := range c.remoteActors {
 		if c.remoteActors[i].Token == msgActionPack.ActorToken {
@@ -178,7 +179,7 @@ func (c *clientService) HandleActionPack(
 		}
 	}
 	if actor == nil {
-		return message.ActionConfirm{}, ErrUnknownRemoteActor
+		return storymessage.ActionConfirm{}, ErrUnknownRemoteActor
 	}
 
 	actions, _ := sequence.Engine(msgActionPack.Actions, actor.ActionStream, &actor.ActionMissing)
@@ -186,7 +187,7 @@ func (c *clientService) HandleActionPack(
 	for i := range actions {
 		select {
 		case <-ctx.Done():
-			return message.ActionConfirm{}, ctx.Err()
+			return storymessage.ActionConfirm{}, ctx.Err()
 		case actor.Channel <- actions[i].Payload:
 		}
 	}
@@ -198,8 +199,8 @@ func (c *clientService) HandleActionPack(
 		missing = missing[len(missing)-controller.ActionBufferCapacity:]
 	}
 
-	msgActionConfirm := message.ActionConfirm{
-		HeaderServer: message.HeaderServer{
+	msgActionConfirm := storymessage.ActionConfirm{
+		HeaderServer: storymessage.HeaderServer{
 			SessionToken: c.Token,
 		},
 		ActorToken:   actor.Token,

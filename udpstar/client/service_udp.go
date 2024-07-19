@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package client
 
@@ -6,6 +6,7 @@ import (
 	"context"
 	"github.com/marko-gacesa/udpstar/udp"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 )
@@ -13,24 +14,20 @@ import (
 type udpService struct {
 	udpClient *udp.Client
 	chReceive chan serverMessage
-	chSend    chan message.ClientMessage
+	chSend    chan message.Encoder
 	log       *slog.Logger
 }
 
 type serverMessage struct {
-	Msg  message.ServerMessage
-	Type message.Type
-}
-
-type sender interface {
-	Send(message.ClientMessage)
+	Category message.Category
+	Raw      []byte
 }
 
 func newUDPService(client *udp.Client, log *slog.Logger) udpService {
 	return udpService{
 		udpClient: client,
 		chReceive: make(chan serverMessage),
-		chSend:    make(chan message.ClientMessage),
+		chSend:    make(chan message.Encoder),
 		log:       log,
 	}
 }
@@ -44,20 +41,22 @@ func (s *udpService) Listen(ctx context.Context) error {
 	return s.udpClient.Listen(ctx, func(data []byte) {
 		defer util.Recover(s.log)
 
-		msgType, msg := message.ParseServer(data)
-		if msg == nil {
-			s.log.With("size", len(data)).Debug("received invalid message")
+		if len(data) == 0 {
+			s.log.Debug("received empty message")
 			return
 		}
 
+		category := message.Category(data[0])
+		data = data[1:]
+
 		s.chReceive <- serverMessage{
-			Msg:  msg,
-			Type: msgType,
+			Category: category,
+			Raw:      data,
 		}
 	})
 }
 
-func (s *udpService) Send(msg message.ClientMessage) {
+func (s *udpService) Send(msg message.Encoder) {
 	s.chSend <- msg
 }
 
@@ -74,17 +73,14 @@ func (s *udpService) StartSender(ctx context.Context) error {
 			func() {
 				defer util.Recover(s.log)
 
-				size := message.SerializeClient(msg, buffer[:])
-				if size > message.MaxMessageSize {
+				size := msg.Encode(buffer[:])
+				if size > storymessage.MaxMessageSize {
 					s.log.With("size", size).Warn("sending large message")
 				}
 
 				err := s.udpClient.Send(buffer[:size])
 				if err != nil {
-					s.log.With(
-						"type", msg.Type().String(),
-						"size", size,
-					).Error("failed to send message to server")
+					s.log.With("size", size).Error("failed to send message to server")
 				}
 			}()
 		}

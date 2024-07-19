@@ -1,10 +1,10 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
+	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	"sync/atomic"
 	"time"
 )
@@ -12,8 +12,8 @@ import (
 type pingService struct {
 	latency atomic.Int64
 	pings   [pingDimension]pingInfo
-	pongCh  chan *message.Pong
-	sender  sender
+	pongCh  chan pingmessage.Pong
+	sender  pingSender
 }
 
 type pingInfo struct {
@@ -31,11 +31,11 @@ const (
 	pingPeriod    = time.Second
 )
 
-func newPingService(sender sender) pingService {
+func newPingService(sender pingSender) pingService {
 	return pingService{
 		latency: atomic.Int64{},
 		pings:   [pingDimension]pingInfo{},
-		pongCh:  make(chan *message.Pong),
+		pongCh:  make(chan pingmessage.Pong),
 		sender:  sender,
 	}
 }
@@ -65,7 +65,7 @@ func (s *pingService) Start(ctx context.Context) error {
 				received: time.Time{},
 			}
 
-			s.sender.Send(&message.Ping{
+			s.sender.pingSend(pingmessage.Ping{
 				MessageID:  id,
 				ClientTime: now,
 			})
@@ -119,7 +119,7 @@ func (s *pingService) Start(ctx context.Context) error {
 	}
 }
 
-func (s *pingService) HandlePong(ctx context.Context, msg *message.Pong) {
+func (s *pingService) HandlePong(ctx context.Context, msg pingmessage.Pong) {
 	select {
 	case <-ctx.Done():
 	case s.pongCh <- msg:

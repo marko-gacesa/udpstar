@@ -1,9 +1,10 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
-package message
+package story
 
 import (
 	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"math"
 	"reflect"
 	"testing"
@@ -13,7 +14,6 @@ import (
 func TestClientSerialize(t *testing.T) {
 	tests := []ClientMessage{
 		&TestClient{HeaderClient: getHeaderClient(), Payload: getPayload()},
-		&Ping{HeaderClient: getHeaderClient(), MessageID: r.Uint32(), ClientTime: time.Unix(0, r.Int63())},
 		&ActionPack{
 			HeaderClient: getHeaderClient(),
 			ActorToken:   getToken(),
@@ -46,8 +46,13 @@ func TestClientSerialize(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(msg.Type().String(), func(t *testing.T) {
-			size := SerializeClient(msg, buf[:])
-			msgType, msgClone := ParseClient(buf[:size])
+			size := msg.Encode(buf[:])
+
+			if want, got := CategoryStory, message.Category(buf[0]); want != got {
+				t.Errorf("type mismatch: want=%v got=%v", want, got)
+			}
+
+			msgType, msgClone := ParseClient(buf[1:size])
 
 			if want, got := msg.Type(), msgType; want != got {
 				t.Errorf("type mismatch: want=%s got=%s", want.String(), got.String())
@@ -57,7 +62,7 @@ func TestClientSerialize(t *testing.T) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
 			}
 
-			if want, got := size, SerializeSize(msg); want != got {
+			if want, got := size, EncodedSize(msg); want != got {
 				t.Errorf("size mismatch: want=%d got=%d", want, got)
 			}
 		})
@@ -67,7 +72,6 @@ func TestClientSerialize(t *testing.T) {
 func TestServerSerialize(t *testing.T) {
 	tests := []ServerMessage{
 		&TestServer{HeaderServer: getHeaderServer(), Payload: getPayload()},
-		&Pong{HeaderServer: getHeaderServer(), MessageID: r.Uint32(), ClientTime: time.Unix(0, r.Int63())},
 		&LatencyReport{HeaderServer: getHeaderServer(), Latencies: []LatencyReportActor{
 			{
 				Name:    "marko",
@@ -106,8 +110,13 @@ func TestServerSerialize(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(msg.Type().String(), func(t *testing.T) {
-			size := SerializeServer(msg, buf[:])
-			msgType, msgClone := ParseServer(buf[:size])
+			size := msg.Encode(buf[:])
+
+			if want, got := CategoryStory, message.Category(buf[0]); want != got {
+				t.Errorf("type mismatch: want=%v got=%v", want, got)
+			}
+
+			msgType, msgClone := ParseServer(buf[1:size])
 
 			if want, got := msg.Type(), msgType; want != got {
 				t.Errorf("type mismatch: want=%s got=%s", want.String(), got.String())
@@ -117,7 +126,7 @@ func TestServerSerialize(t *testing.T) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
 			}
 
-			if want, got := size, SerializeSize(msg); want != got {
+			if want, got := size, EncodedSize(msg); want != got {
 				t.Errorf("size mismatch: want=%d got=%d", want, got)
 			}
 		})

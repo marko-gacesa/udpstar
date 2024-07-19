@@ -1,11 +1,11 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package server
 
 import (
 	"context"
 	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
@@ -98,8 +98,8 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 			LastMsgReceived: time.Now(), Address: client2Addr, Latency: latency,
 		})
 
-		var msgStoryConfirm *message.StoryConfirm
-		var msgStoryPack *message.StoryPack
+		var msgStoryConfirm *storymessage.StoryConfirm
+		var msgStoryPack *storymessage.StoryPack
 		var err error
 
 		storyCh <- storyEntry1.Payload
@@ -109,7 +109,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// client 1 got them all
-		msgStoryConfirm = &message.StoryConfirm{StoryToken: tokenStory, LastSequence: 3, Missing: nil}
+		msgStoryConfirm = &storymessage.StoryConfirm{StoryToken: tokenStory, LastSequence: 3, Missing: nil}
 		msgStoryConfirm.SetLatency(latency)
 		msgStoryConfirm.SetClientToken(tokenClient1)
 		msgStoryPack, err = sessionSrv.HandleStoryConfirm(ctx, client1Srv, msgStoryConfirm)
@@ -122,7 +122,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 		}
 
 		// client 2 didn't get stories 2 and 3
-		msgStoryConfirm = &message.StoryConfirm{
+		msgStoryConfirm = &storymessage.StoryConfirm{
 			StoryToken:   tokenStory,
 			LastSequence: 1,
 			Missing:      []sequence.Range{sequence.RangeLen(2, 2)},
@@ -137,7 +137,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 
 		compareStoryElements(t, tokenClient1,
 			[][]sequence.Entry{{storyEntry2, storyEntry3}},
-			[]*message.StoryPack{msgStoryPack})
+			[]*storymessage.StoryPack{msgStoryPack})
 
 		time.Sleep(10 * time.Millisecond)
 
@@ -146,16 +146,21 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 
 	g.Wait()
 
-	clientMsgs := map[int][]*message.StoryPack{}
+	clientMsgs := map[int][]*storymessage.StoryPack{}
 
 	for i, udpMsg := range sessionMsgRec.records {
-		msgType, msg := message.ParseServer(udpMsg.Bytes)
-		if msgType != message.TypeStory {
+		if udpMsg.Category != storymessage.CategoryStory {
+			t.Errorf("message %d is not category story, but %d", i, udpMsg.Category)
+			continue
+		}
+
+		msgType, msg := storymessage.ParseServer(udpMsg.Bytes)
+		if msgType != storymessage.TypeStory {
 			t.Errorf("message %d is not type story, but %s", i, msgType.String())
 			continue
 		}
 
-		msgStoryPack := msg.(*message.StoryPack)
+		msgStoryPack := msg.(*storymessage.StoryPack)
 		clientMsgs[udpMsg.Addr.Port] = append(clientMsgs[udpMsg.Addr.Port], msgStoryPack)
 	}
 
@@ -169,7 +174,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 	compareStoryElements(t, tokenClient2, expected, clientMsgs[tokenClient2])
 }
 
-func compareStoryElements(t *testing.T, clientToken uint64, wantElements [][]sequence.Entry, msgs []*message.StoryPack) {
+func compareStoryElements(t *testing.T, clientToken uint64, wantElements [][]sequence.Entry, msgs []*storymessage.StoryPack) {
 	if want, got := len(wantElements), len(msgs); want != got {
 		t.Errorf("message count mismatch: want=%d got=%d", want, got)
 		size := min(len(wantElements), len(msgs))

@@ -2,37 +2,18 @@
 
 package message
 
-import "time"
-
-type putter interface {
+type Putter interface {
 	Put([]byte) int
 }
 
-type getter interface {
+type Getter interface {
 	Get([]byte) int
 }
 
-type sizer interface {
-	size() int
+type Sizer interface {
+	Size() int
 }
 
-type Message interface {
-	putter
-	getter
-	sizer
-	Type() Type
-}
-
-type ClientMessage interface {
-	Message
-	GetClientToken() Token
-	SetClientToken(Token)
-	GetLatency() time.Duration
-	SetLatency(time.Duration)
-}
-
-type ServerMessage interface {
-	Message
-	GetSessionToken() Token
-	SetSessionToken(Token)
+type Encoder interface {
+	Encode([]byte) int
 }

@@ -1,6 +1,6 @@
 // Copyright (c) 2023 by Marko Gaćeša
 
-package message
+package story
 
 type ClientState byte
 

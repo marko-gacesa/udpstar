@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package client
 
@@ -8,22 +8,22 @@ import (
 	"github.com/marko-gacesa/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"log/slog"
 	"time"
 )
 
 type actionService struct {
 	actorActions []actorAction
-	confirmCh    chan *message.ActionConfirm
-	sender       sender
+	confirmCh    chan *storymessage.ActionConfirm
+	sender       clientSender
 	latency      latencyGetter
 	log          *slog.Logger
 }
 
 func newActionService(
 	actors []Actor,
-	sender sender,
+	sender clientSender,
 	latency latencyGetter,
 	log *slog.Logger,
 ) actionService {
@@ -34,7 +34,7 @@ func newActionService(
 
 	return actionService{
 		actorActions: actorActions,
-		confirmCh:    make(chan *message.ActionConfirm),
+		confirmCh:    make(chan *storymessage.ActionConfirm),
 		sender:       sender,
 		latency:      latency,
 		log:          log,
@@ -112,7 +112,7 @@ func (s *actionService) Start(ctx context.Context) error {
 				})
 			}
 			if len(missing) > 0 {
-				s.sender.Send(&message.ActionPack{
+				s.sender.clientSend(&storymessage.ActionPack{
 					ActorToken: actor.Token,
 					Actions:    missing,
 				})
@@ -128,17 +128,17 @@ func (s *actionService) sendActions(actor *actorAction) int {
 		return 0
 	}
 
-	msg := message.ActionPack{
+	msg := storymessage.ActionPack{
 		ActorToken: actor.Token,
 		Actions:    actions,
 	}
 
-	s.sender.Send(&msg)
+	s.sender.clientSend(&msg)
 
 	return len(actions)
 }
 
-func (s *actionService) ConfirmActions(ctx context.Context, msg *message.ActionConfirm) {
+func (s *actionService) ConfirmActions(ctx context.Context, msg *storymessage.ActionConfirm) {
 	select {
 	case <-ctx.Done():
 	case s.confirmCh <- msg:

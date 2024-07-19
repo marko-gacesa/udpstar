@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package client
 
@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"reflect"
@@ -59,8 +59,8 @@ func TestActionService_Send(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 
-		actionSrv.ConfirmActions(ctx, &message.ActionConfirm{
-			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+		actionSrv.ConfirmActions(ctx, &storymessage.ActionConfirm{
+			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			ActorToken:   tokenActor,
 			LastSequence: 1,
 			Missing:      nil,
@@ -70,8 +70,8 @@ func TestActionService_Send(t *testing.T) {
 		time.Sleep(140 * time.Millisecond)
 		// waited too long (latency is set to 100ms), the timer fired, resend recent messages: [action2]
 
-		actionSrv.ConfirmActions(ctx, &message.ActionConfirm{
-			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+		actionSrv.ConfirmActions(ctx, &storymessage.ActionConfirm{
+			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			ActorToken:   tokenActor,
 			LastSequence: 2,
 			Missing:      nil,
@@ -152,8 +152,8 @@ func TestActionService_Missing(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		actionSrv.ConfirmActions(ctx, &message.ActionConfirm{
-			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+		actionSrv.ConfirmActions(ctx, &storymessage.ActionConfirm{
+			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			ActorToken:   1,
 			LastSequence: 0,
 			Missing:      []sequence.Range{sequence.RangeInclusive(1, 2)},
@@ -188,7 +188,7 @@ func compareActions(t *testing.T, actors []Actor, wantActions [][]sequence.Entry
 	}
 
 	for i, msg := range msgRec.Messages {
-		msgActionPack, ok := msg.(*message.ActionPack)
+		msgActionPack, ok := msg.(*storymessage.ActionPack)
 		if !ok {
 			t.Errorf("message %d not action pack", i)
 			continue
@@ -218,10 +218,10 @@ func compareActions(t *testing.T, actors []Actor, wantActions [][]sequence.Entry
 
 type messageRecorder struct {
 	mx       sync.Mutex
-	Messages []message.ClientMessage
+	Messages []storymessage.ClientMessage
 }
 
-func (s *messageRecorder) Send(message message.ClientMessage) {
+func (s *messageRecorder) clientSend(message storymessage.ClientMessage) {
 	s.mx.Lock()
 	s.Messages = append(s.Messages, message)
 	s.mx.Unlock()

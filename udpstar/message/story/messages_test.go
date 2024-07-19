@@ -1,9 +1,10 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
-package message
+package story
 
 import (
 	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"math/rand"
 	"strings"
 	"testing"
@@ -12,8 +13,8 @@ import (
 
 var r = rand.New(rand.NewSource(time.Now().UnixNano()))
 
-func getToken() Token {
-	return Token(r.Uint64())
+func getToken() message.Token {
+	return message.Token(r.Uint64())
 }
 
 func getHeaderClient() HeaderClient {
@@ -44,7 +45,7 @@ func TestLenStoryConfirm(t *testing.T) {
 		Missing:      make([]sequence.Range, LenStoryConfirm),
 	}
 
-	size := SerializeSize(msg)
+	size := EncodedSize(msg)
 
 	t.Logf("maximum size of StoryConfirm: %d", size)
 	if size > MaxMessageSize {
@@ -62,7 +63,7 @@ func TestLenLatencyReport(t *testing.T) {
 		msg.Latencies[i].Name = strings.Repeat("a", LenLatencyReportName)
 	}
 
-	size := SerializeSize(msg)
+	size := EncodedSize(msg)
 
 	t.Logf("maximum size of LatencyReport: %d", size)
 	if size > MaxMessageSize {

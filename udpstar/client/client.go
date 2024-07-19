@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package client
 
@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"github.com/marko-gacesa/udpstar/udp"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"strings"
@@ -99,12 +101,6 @@ func (c *Client) Start(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) Send(msg message.ClientMessage) {
-	msg.SetClientToken(c.clientToken)
-	msg.SetLatency(c.pingSrv.Latency())
-	c.udpSrv.Send(msg)
-}
-
 func (c *Client) Quality() time.Duration {
 	return c.storySrv.Quality()
 }
@@ -120,36 +116,48 @@ func (c *Client) processIncomingMessages(ctx context.Context) error {
 				return nil
 			}
 
-			if m.Msg.GetSessionToken() != c.sessionToken {
-				c.log.With("type", m.Type).Warn("received message for wrong session")
-				continue
-			}
+			switch m.Category {
+			case pingmessage.CategoryPing:
+				msgPong := pingmessage.ParsePong(m.Raw)
+				c.handlePingMessage(ctx, msgPong)
+			case storymessage.CategoryStory:
+				msgType, msg := storymessage.ParseServer(m.Raw)
+				if msg == nil {
+					c.log.With("size", len(m.Raw)).Debug("received invalid message")
+					continue
+				}
 
-			c.handleMessage(ctx, m.Type, m.Msg)
+				if msg.GetSessionToken() != c.sessionToken {
+					c.log.With("type", msgType).Warn("received message for wrong session")
+					continue
+				}
+
+				c.handleStoryMessage(ctx, msgType, msg)
+			}
 		}
 	}
 }
 
-func (c *Client) handleMessage(ctx context.Context, msgType message.Type, msg message.ServerMessage) {
+func (c *Client) handlePingMessage(ctx context.Context, msg pingmessage.Pong) {
+	c.pingSrv.HandlePong(ctx, msg)
+}
+
+func (c *Client) handleStoryMessage(ctx context.Context, msgType storymessage.Type, msg storymessage.ServerMessage) {
 	switch msgType {
-	case message.TypeTest:
-		msgTest := msg.(*message.TestServer)
+	case storymessage.TypeTest:
+		msgTest := msg.(*storymessage.TestServer)
 		c.log.With("payload", msgTest.Payload).Debug("test message")
 
-	case message.TypePing:
-		msgPong := msg.(*message.Pong)
-		c.pingSrv.HandlePong(ctx, msgPong)
-
-	case message.TypeAction:
-		msgActionConfirm := msg.(*message.ActionConfirm)
+	case storymessage.TypeAction:
+		msgActionConfirm := msg.(*storymessage.ActionConfirm)
 		c.actionSrv.ConfirmActions(ctx, msgActionConfirm)
 
-	case message.TypeStory:
-		msgStoryPack := msg.(*message.StoryPack)
+	case storymessage.TypeStory:
+		msgStoryPack := msg.(*storymessage.StoryPack)
 		c.storySrv.HandlePack(ctx, msgStoryPack)
 
-	case message.TypeLatencyReport:
-		msgLatencyRep := msg.(*message.LatencyReport)
+	case storymessage.TypeLatencyReport:
+		msgLatencyRep := msg.(*storymessage.LatencyReport)
 
 		sb := strings.Builder{}
 		for _, latency := range msgLatencyRep.Latencies {
@@ -162,4 +170,22 @@ func (c *Client) handleMessage(ctx context.Context, msgType message.Type, msg me
 	default:
 		c.log.With("type", msgType).Warn("received message of unknown type")
 	}
+}
+
+type clientSender interface {
+	clientSend(msg storymessage.ClientMessage)
+}
+
+type pingSender interface {
+	pingSend(ping pingmessage.Ping)
+}
+
+func (c *Client) pingSend(ping pingmessage.Ping) {
+	c.udpSrv.Send(&ping)
+}
+
+func (c *Client) clientSend(msg storymessage.ClientMessage) {
+	msg.SetClientToken(c.clientToken)
+	msg.SetLatency(c.pingSrv.Latency())
+	c.udpSrv.Send(msg)
 }

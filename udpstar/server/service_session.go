@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package server
 
@@ -9,6 +9,7 @@ import (
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 )
@@ -48,7 +49,7 @@ type sessionService struct {
 type storyGetPackage struct {
 	story      *storyData
 	missing    []sequence.Range
-	responseCh chan<- message.StoryPack
+	responseCh chan<- storymessage.StoryPack
 }
 
 func newSessionService(
@@ -134,8 +135,8 @@ func (s *sessionService) start(ctx context.Context) error {
 			story.History.Push(entry)
 			recentEntries := story.History.RecentX(0, 0, message.MaxMessageSize-64)
 
-			msg := &message.StoryPack{
-				HeaderServer: message.HeaderServer{
+			msg := &storymessage.StoryPack{
+				HeaderServer: storymessage.HeaderServer{
 					SessionToken: s.Token,
 				},
 				StoryToken: story.Token,
@@ -147,8 +148,8 @@ func (s *sessionService) start(ctx context.Context) error {
 			}
 
 		case storyReq := <-s.storyGetCh:
-			msg := message.StoryPack{
-				HeaderServer: message.HeaderServer{
+			msg := storymessage.StoryPack{
+				HeaderServer: storymessage.HeaderServer{
 					SessionToken: s.Token,
 				},
 				StoryToken: storyReq.story.Token,
@@ -161,7 +162,7 @@ func (s *sessionService) start(ctx context.Context) error {
 					storyEntries = append(storyEntries, entry)
 
 					msg.Stories = storyEntries
-					if message.SerializeSize(&msg) < message.MaxMessageSize {
+					if storymessage.EncodedSize(&msg) < storymessage.MaxMessageSize {
 						return true
 					}
 
@@ -202,8 +203,8 @@ func (s *sessionService) start(ctx context.Context) error {
 
 func (s *sessionService) HandleStoryConfirm(
 	ctx context.Context,
-	client *clientService, msg *message.StoryConfirm,
-) (*message.StoryPack, error) {
+	client *clientService, msg *storymessage.StoryConfirm,
+) (*storymessage.StoryPack, error) {
 	var story *storyData
 	for i := range s.stories {
 		if s.stories[i].Token == msg.StoryToken {
@@ -219,7 +220,7 @@ func (s *sessionService) HandleStoryConfirm(
 		return nil, nil
 	}
 
-	ch := make(chan message.StoryPack)
+	ch := make(chan storymessage.StoryPack)
 
 	select {
 	case <-ctx.Done():
@@ -245,22 +246,22 @@ func (s *sessionService) HandleStoryConfirm(
 	}
 }
 
-func (s *sessionService) UpdateState(ctx context.Context) *message.LatencyReport {
+func (s *sessionService) UpdateState(ctx context.Context) *storymessage.LatencyReport {
 	if s.state == SessionStateNew || s.state == SessionStateDone {
 		return nil
 	}
 
-	msg := &message.LatencyReport{
-		HeaderServer: message.HeaderServer{
+	msg := &storymessage.LatencyReport{
+		HeaderServer: storymessage.HeaderServer{
 			SessionToken: s.Token,
 		},
 		Latencies: nil,
 	}
 
 	for _, actor := range s.localActors {
-		msg.Latencies = append(msg.Latencies, message.LatencyReportActor{
+		msg.Latencies = append(msg.Latencies, storymessage.LatencyReportActor{
 			Name:    actor.Name,
-			State:   message.ClientStateLocal,
+			State:   storymessage.ClientStateLocal,
 			Latency: 0,
 		})
 	}
@@ -271,7 +272,7 @@ func (s *sessionService) UpdateState(ctx context.Context) *message.LatencyReport
 		state := c.GetState(ctx)
 
 		for _, actor := range c.remoteActors {
-			msg.Latencies = append(msg.Latencies, message.LatencyReportActor{
+			msg.Latencies = append(msg.Latencies, storymessage.LatencyReportActor{
 				Name:    actor.Name,
 				State:   state.State,
 				Latency: state.Latency,
@@ -280,13 +281,13 @@ func (s *sessionService) UpdateState(ctx context.Context) *message.LatencyReport
 
 		switch state.State {
 		default:
-		case message.ClientStateNew, message.ClientStateLocal:
-		case message.ClientStateGood:
-		case message.ClientStateLagging:
+		case storymessage.ClientStateNew, storymessage.ClientStateLocal:
+		case storymessage.ClientStateGood:
+		case storymessage.ClientStateLagging:
 			if newState != SessionStateNotInSync {
 				newState = SessionStateDegraded
 			}
-		case message.ClientStateLost:
+		case storymessage.ClientStateLost:
 			newState = SessionStateNotInSync
 		}
 	}

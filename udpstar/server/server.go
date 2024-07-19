@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package server
 
@@ -7,6 +7,8 @@ import (
 	"github.com/marko-gacesa/udpstar/udp"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
@@ -24,6 +26,8 @@ type Server struct {
 
 	log *slog.Logger
 }
+
+const responseBufferSize = 4 << 10
 
 type sessionEntry struct {
 	srv      *sessionService
@@ -62,7 +66,7 @@ func (s *Server) Start(ctx context.Context) error {
 	})
 
 	g.Go(func() error {
-		return s.periodicNodeCheck(ctx)
+		return s.latencyReportSender(ctx)
 	})
 
 	err := g.Wait()
@@ -78,107 +82,32 @@ func (s *Server) Start(ctx context.Context) error {
 }
 
 func (s *Server) handleIncomingMessages(ctx context.Context) error {
-	const bufferSize = 4 << 10
-	var responseBuffer [bufferSize]byte
+	var responseBuffer [responseBufferSize]byte
 
 	return s.server.Listen(ctx, func(data []byte, addr net.UDPAddr) []byte {
-		msgType, msg := message.ParseClient(data)
-		if msg == nil {
-			s.log.With("addr", addr.String()).Warn("failed to parse message")
+		if len(data) == 0 {
+			s.log.With("addr", addr.String()).Debug("received empty message")
 			return nil
 		}
 
-		clientToken := msg.GetClientToken()
+		category := message.Category(data[0])
+		data = data[1:]
 
-		s.mx.Lock()
-		client, ok := s.clientMap[clientToken]
-		s.mx.Unlock()
-		if !ok {
-			s.log.With(
-				"addr", addr.String(),
-				"msg", msgType.String(),
-				"client", clientToken).Warn("unknown client")
-			return nil
+		switch category {
+		case pingmessage.CategoryPing:
+			return s.handlePingMessage(ctx, &responseBuffer, data, addr)
+		case storymessage.CategoryStory:
+			return s.handleStoryMessage(ctx, &responseBuffer, data, addr)
 		}
 
-		now := time.Now()
-
-		// update client's address and latency
-		client.UpdateState(ctx, clientData{
-			LastMsgReceived: now,
-			Address:         addr,
-			Latency:         msg.GetLatency(),
-		})
-
-		sessionToken := client.Session.Token
-
-		switch msgType {
-		case message.TypeTest:
-			msgTest := msg.(*message.TestClient)
-			s.log.With(
-				"addr", addr.String(),
-				"msg", msgType.String(),
-				"client", clientToken,
-				"session", sessionToken,
-				"payload", string(msgTest.Payload)).Debug("test message")
-
-		case message.TypePing:
-			msgPing := msg.(*message.Ping)
-			msgPong := &message.Pong{
-				HeaderServer: message.HeaderServer{
-					SessionToken: sessionToken,
-				},
-				MessageID:  msgPing.MessageID,
-				ClientTime: msgPing.ClientTime,
-			}
-
-			size := msgPong.Put(responseBuffer[:])
-			return responseBuffer[:size]
-
-		case message.TypeAction:
-			msgActionPack := msg.(*message.ActionPack)
-			msgActionConfirm, err := client.HandleActionPack(ctx, msgActionPack)
-			if err != nil {
-				s.log.With(
-					"addr", addr.String(),
-					"msg", msgType.String(),
-					"client", clientToken,
-					"session", sessionToken,
-					"actor", msgActionPack.ActorToken,
-					"err", err.Error()).Warn("failed to handle action pack")
-				return nil
-			}
-
-			size := msgActionConfirm.Put(responseBuffer[:])
-			return responseBuffer[:size]
-
-		case message.TypeStory:
-			msgStoryConfirm := msg.(*message.StoryConfirm)
-			msgStoryPack, err := client.Session.HandleStoryConfirm(ctx, client, msgStoryConfirm)
-			if err != nil {
-				s.log.With(
-					"addr", addr.String(),
-					"msg", msgType.String(),
-					"client", clientToken,
-					"session", sessionToken,
-					"story", msgStoryConfirm.StoryToken,
-					"err", err.Error()).Warn("failed to handle confirm story")
-				return nil
-			}
-
-			if msgStoryPack == nil {
-				return nil
-			}
-
-			size := msgStoryPack.Put(responseBuffer[:])
-			return responseBuffer[:size]
-		}
+		s.log.With("addr", addr.String(), "category", category).
+			Debug("received message of unsupported category")
 
 		return nil
 	})
 }
 
-func (s *Server) periodicNodeCheck(ctx context.Context) error {
+func (s *Server) latencyReportSender(ctx context.Context) error {
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
@@ -277,6 +206,101 @@ func (s *Server) StopSession(sessionToken message.Token) error {
 	}
 
 	delete(s.sessionMap, sessionToken)
+
+	return nil
+}
+
+func (s *Server) handlePingMessage(ctx context.Context, responseBuffer *[responseBufferSize]byte, data []byte, addr net.UDPAddr) []byte {
+	msgPing := pingmessage.ParsePing(data)
+
+	msgPong := &pingmessage.Pong{
+		MessageID:  msgPing.MessageID,
+		ClientTime: msgPing.ClientTime,
+	}
+
+	size := msgPong.Put(responseBuffer[:])
+	return responseBuffer[:size]
+}
+
+func (s *Server) handleStoryMessage(ctx context.Context, responseBuffer *[responseBufferSize]byte, data []byte, addr net.UDPAddr) []byte {
+	msgType, msg := storymessage.ParseClient(data)
+	if msg == nil {
+		s.log.With("addr", addr.String()).Warn("failed to parse message")
+		return nil
+	}
+
+	clientToken := msg.GetClientToken()
+
+	s.mx.Lock()
+	client, ok := s.clientMap[clientToken]
+	s.mx.Unlock()
+	if !ok {
+		s.log.With(
+			"addr", addr.String(),
+			"msg", msgType.String(),
+			"client", clientToken).Warn("unknown client")
+		return nil
+	}
+
+	now := time.Now()
+
+	// update client's address and latency
+	client.UpdateState(ctx, clientData{
+		LastMsgReceived: now,
+		Address:         addr,
+		Latency:         msg.GetLatency(),
+	})
+
+	sessionToken := client.Session.Token
+
+	switch msgType {
+	case storymessage.TypeTest:
+		msgTest := msg.(*storymessage.TestClient)
+		s.log.With(
+			"addr", addr.String(),
+			"msg", msgType.String(),
+			"client", clientToken,
+			"session", sessionToken,
+			"payload", string(msgTest.Payload)).Debug("test message")
+
+	case storymessage.TypeAction:
+		msgActionPack := msg.(*storymessage.ActionPack)
+		msgActionConfirm, err := client.HandleActionPack(ctx, msgActionPack)
+		if err != nil {
+			s.log.With(
+				"addr", addr.String(),
+				"msg", msgType.String(),
+				"client", clientToken,
+				"session", sessionToken,
+				"actor", msgActionPack.ActorToken,
+				"err", err.Error()).Warn("failed to handle action pack")
+			return nil
+		}
+
+		size := msgActionConfirm.Put(responseBuffer[:])
+		return responseBuffer[:size]
+
+	case storymessage.TypeStory:
+		msgStoryConfirm := msg.(*storymessage.StoryConfirm)
+		msgStoryPack, err := client.Session.HandleStoryConfirm(ctx, client, msgStoryConfirm)
+		if err != nil {
+			s.log.With(
+				"addr", addr.String(),
+				"msg", msgType.String(),
+				"client", clientToken,
+				"session", sessionToken,
+				"story", msgStoryConfirm.StoryToken,
+				"err", err.Error()).Warn("failed to handle confirm story")
+			return nil
+		}
+
+		if msgStoryPack == nil {
+			return nil
+		}
+
+		size := msgStoryPack.Put(responseBuffer[:])
+		return responseBuffer[:size]
+	}
 
 	return nil
 }

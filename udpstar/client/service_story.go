@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package client
 
@@ -8,6 +8,7 @@ import (
 	"github.com/marko-gacesa/udpstar/joinchannel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"log/slog"
 	"slices"
 	"sync/atomic"
@@ -16,14 +17,14 @@ import (
 
 type storyService struct {
 	storyStreams []storyStream
-	receiveCh    chan *message.StoryPack
-	sender       sender
+	receiveCh    chan *storymessage.StoryPack
+	sender       clientSender
 	log          *slog.Logger
 }
 
 func newStoryService(
 	stories []Story,
-	sender sender,
+	sender clientSender,
 	log *slog.Logger,
 ) storyService {
 	storyStreams := make([]storyStream, len(stories))
@@ -33,7 +34,7 @@ func newStoryService(
 
 	return storyService{
 		storyStreams: storyStreams,
-		receiveCh:    make(chan *message.StoryPack),
+		receiveCh:    make(chan *storymessage.StoryPack),
 		sender:       sender,
 		log:          log,
 	}
@@ -93,7 +94,7 @@ func (s *storyService) Start(ctx context.Context) error {
 	}
 }
 
-func (s *storyService) HandlePack(ctx context.Context, msg *message.StoryPack) {
+func (s *storyService) HandlePack(ctx context.Context, msg *storymessage.StoryPack) {
 	select {
 	case <-ctx.Done():
 	case s.receiveCh <- msg:
@@ -106,8 +107,8 @@ func (s *storyService) sendConfirm(storyToken message.Token, lastSeq sequence.Se
 	iter.Iterate(func(r sequence.Range) bool {
 		missing = append(missing, r)
 
-		if len(missing) == message.LenStoryConfirm {
-			s.sender.Send(&message.StoryConfirm{
+		if len(missing) == storymessage.LenStoryConfirm {
+			s.sender.clientSend(&storymessage.StoryConfirm{
 				StoryToken:   storyToken,
 				LastSequence: lastSeq,
 				Missing:      slices.Clone(missing),
@@ -119,7 +120,7 @@ func (s *storyService) sendConfirm(storyToken message.Token, lastSeq sequence.Se
 		return true
 	})
 
-	s.sender.Send(&message.StoryConfirm{
+	s.sender.clientSend(&storymessage.StoryConfirm{
 		StoryToken:   storyToken,
 		LastSequence: lastSeq,
 		Missing:      missing,

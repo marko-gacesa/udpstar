@@ -1,11 +1,11 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
 	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"reflect"
@@ -62,8 +62,8 @@ func TestStoryService_HandlePack(t *testing.T) {
 	storyEntry3 := sequence.Entry{Seq: 3, Delay: 10 * time.Millisecond, Payload: []byte("Z")}
 
 	g.Go(func() error {
-		storySrv.HandlePack(ctx, &message.StoryPack{
-			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+		storySrv.HandlePack(ctx, &storymessage.StoryPack{
+			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			StoryToken:   tokenStory,
 			Stories:      []sequence.Entry{storyEntry2},
 		})
@@ -72,8 +72,8 @@ func TestStoryService_HandlePack(t *testing.T) {
 		time.Sleep(1200 * time.Millisecond)
 		// waited too long (latency is set to 1000ms), the timer fired, resend story confirm: latest=0 missing=[1]
 
-		storySrv.HandlePack(ctx, &message.StoryPack{
-			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+		storySrv.HandlePack(ctx, &storymessage.StoryPack{
+			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			StoryToken:   tokenStory,
 			Stories:      []sequence.Entry{storyEntry1, storyEntry2},
 		})
@@ -81,8 +81,8 @@ func TestStoryService_HandlePack(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		storySrv.HandlePack(ctx, &message.StoryPack{
-			HeaderServer: message.HeaderServer{SessionToken: tokenSession},
+		storySrv.HandlePack(ctx, &storymessage.StoryPack{
+			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			StoryToken:   tokenStory,
 			Stories:      []sequence.Entry{storyEntry1, storyEntry2, storyEntry3},
 		})
@@ -101,23 +101,23 @@ func TestStoryService_HandlePack(t *testing.T) {
 		storyEntry3,
 	}, storyRec)
 
-	compareMessages(t, []message.ClientMessage{
-		&message.StoryConfirm{
+	compareMessages(t, []storymessage.ClientMessage{
+		&storymessage.StoryConfirm{
 			StoryToken:   tokenStory,
 			LastSequence: 0,
 			Missing:      []sequence.Range{sequence.RangeLen(1, 1)},
 		},
-		&message.StoryConfirm{
+		&storymessage.StoryConfirm{
 			StoryToken:   tokenStory,
 			LastSequence: 0,
 			Missing:      []sequence.Range{sequence.RangeLen(1, 1)},
 		},
-		&message.StoryConfirm{
+		&storymessage.StoryConfirm{
 			StoryToken:   tokenStory,
 			LastSequence: 2,
 			Missing:      nil,
 		},
-		&message.StoryConfirm{
+		&storymessage.StoryConfirm{
 			StoryToken:   tokenStory,
 			LastSequence: 3,
 			Missing:      nil,
@@ -145,7 +145,7 @@ func compareStoryElements(t *testing.T, wantEntries []sequence.Entry, gotEntries
 	}
 }
 
-func compareMessages(t *testing.T, wantMsgs []message.ClientMessage, gotMsgs []message.ClientMessage) {
+func compareMessages(t *testing.T, wantMsgs []storymessage.ClientMessage, gotMsgs []storymessage.ClientMessage) {
 	if want, got := len(wantMsgs), len(gotMsgs); want != got {
 		t.Errorf("messages count mismatch: want=%d got=%d", want, got)
 		size := min(len(wantMsgs), len(gotMsgs))

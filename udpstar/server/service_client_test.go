@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package server
 
@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
@@ -18,8 +19,9 @@ import (
 )
 
 type udpRecord struct {
-	Bytes []byte
-	Addr  net.UDPAddr
+	Category message.Category
+	Bytes    []byte
+	Addr     net.UDPAddr
 }
 
 type udpRecorder struct {
@@ -30,8 +32,9 @@ type udpRecorder struct {
 func (rec *udpRecorder) Send(bytes []byte, addr net.UDPAddr) error {
 	rec.mx.Lock()
 	rec.records = append(rec.records, udpRecord{
-		Bytes: slices.Clone(bytes),
-		Addr:  addr,
+		Category: message.Category(bytes[0]),
+		Bytes:    slices.Clone(bytes[1:]),
+		Addr:     addr,
 	})
 	rec.mx.Unlock()
 	return nil
@@ -137,7 +140,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 	g.Go(func() error {
 		statePack := client1Srv.GetState(ctx)
 
-		if statePack.State != message.ClientStateLost {
+		if statePack.State != storymessage.ClientStateLost {
 			t.Errorf("unexpected client state: %s", statePack.State)
 		}
 
@@ -152,7 +155,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 
 		statePack = client1Srv.GetState(ctx)
 
-		if statePack.State != message.ClientStateGood {
+		if statePack.State != storymessage.ClientStateGood {
 			t.Errorf("unexpected client state: %s", statePack.State)
 		}
 
@@ -161,8 +164,8 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		}
 
 		// client1 service received action3 request from the remote actor 1.
-		msg, err := client1Srv.HandleActionPack(ctx, &message.ActionPack{
-			HeaderClient: message.HeaderClient{ClientToken: tokenClient1, Latency: 1},
+		msg, err := client1Srv.HandleActionPack(ctx, &storymessage.ActionPack{
+			HeaderClient: storymessage.HeaderClient{ClientToken: tokenClient1, Latency: 1},
 			ActorToken:   tokenActor1,
 			Actions:      []sequence.Entry{action3},
 		})
@@ -178,8 +181,8 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// client1 service received action2 request from the remote actor 1.
-		msg, err = client1Srv.HandleActionPack(ctx, &message.ActionPack{
-			HeaderClient: message.HeaderClient{ClientToken: tokenClient1, Latency: 1},
+		msg, err = client1Srv.HandleActionPack(ctx, &storymessage.ActionPack{
+			HeaderClient: storymessage.HeaderClient{ClientToken: tokenClient1, Latency: 1},
 			ActorToken:   tokenActor1,
 			Actions:      []sequence.Entry{action2},
 		})
@@ -195,8 +198,8 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// client1 service received action1 request from the remote actor 1.
-		msg, err = client1Srv.HandleActionPack(ctx, &message.ActionPack{
-			HeaderClient: message.HeaderClient{ClientToken: tokenClient1, Latency: 1},
+		msg, err = client1Srv.HandleActionPack(ctx, &storymessage.ActionPack{
+			HeaderClient: storymessage.HeaderClient{ClientToken: tokenClient1, Latency: 1},
 			ActorToken:   tokenClient1,
 			Actions:      []sequence.Entry{action1},
 		})
@@ -227,6 +230,6 @@ func TestClientService_HandleActionPack(t *testing.T) {
 
 	// no messages should be sent
 	if len(msgRec.records) != 0 {
-		t.Errorf("actor1MsgRec: got=%v", msgRec)
+		t.Errorf("actor1MsgRec: got=%v", &msgRec)
 	}
 }
