@@ -16,18 +16,24 @@ var _ = interface {
 }((*Client)(nil))
 
 type Client struct {
-	serverIP   net.IP
-	serverPort int
-	localPort  int
+	serverAddr net.UDPAddr
+	localAddr  *net.UDPAddr
 	connection *net.UDPConn
 	durBreak   time.Duration
 }
 
-func NewClient(serverIP net.IP, serverPort, localPort int) *Client {
+func NewClientLocalAddr(serverAddr net.UDPAddr, localAddr *net.UDPAddr) *Client {
 	return &Client{
-		serverIP:   serverIP,
-		serverPort: serverPort,
-		localPort:  localPort,
+		serverAddr: serverAddr,
+		localAddr:  localAddr,
+		durBreak:   durBreakDefault,
+	}
+}
+
+func NewClient(serverAddr net.UDPAddr) *Client {
+	return &Client{
+		serverAddr: serverAddr,
+		localAddr:  nil,
 		durBreak:   durBreakDefault,
 	}
 }
@@ -42,10 +48,7 @@ func (c *Client) SetBreakPeriod(durBreak time.Duration) {
 }
 
 func (c *Client) Connect() error {
-	connection, err := net.DialUDP("udp", nil, &net.UDPAddr{
-		IP:   c.serverIP,
-		Port: c.serverPort,
-	})
+	connection, err := net.DialUDP("udp", c.localAddr, &c.serverAddr)
 	if err != nil {
 		return fmt.Errorf("udp client: failed to dial: %w", err)
 	}
