@@ -8,6 +8,7 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
+	stagemessage "github.com/marko-gacesa/udpstar/udpstar/message/stage"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
@@ -19,10 +20,14 @@ import (
 type Server struct {
 	server *udp.Server
 
+	multicastAddress net.UDPAddr
+
 	mx         sync.Mutex
 	clientMap  map[message.Token]*clientService
 	sessionMap map[message.Token]sessionEntry
 	sessionWG  sync.WaitGroup
+
+	stageMap map[message.Token]stageEntry
 
 	log *slog.Logger
 }
@@ -34,12 +39,19 @@ type sessionEntry struct {
 	cancelFn context.CancelFunc
 }
 
+type stageEntry struct {
+	name        string
+	author      string
+	description string
+}
+
 func NewServer(server *udp.Server, opts ...func(*Server)) *Server {
 	s := &Server{
 		server:     server,
 		mx:         sync.Mutex{},
 		clientMap:  make(map[message.Token]*clientService),
 		sessionMap: make(map[message.Token]sessionEntry),
+		stageMap:   make(map[message.Token]stageEntry),
 		log:        slog.Default(),
 	}
 
@@ -58,6 +70,12 @@ var WithLogger = func(log *slog.Logger) func(*Server) {
 	}
 }
 
+var WithMulticastAddress = func(addr net.UDPAddr) func(*Server) {
+	return func(s *Server) {
+		s.multicastAddress = addr
+	}
+}
+
 func (s *Server) Start(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
@@ -68,6 +86,12 @@ func (s *Server) Start(ctx context.Context) error {
 	g.Go(func() error {
 		return s.latencyReportSender(ctx)
 	})
+
+	if !s.multicastAddress.IP.IsUnspecified() {
+		g.Go(func() error {
+			return s.multicastStage(ctx)
+		})
+	}
 
 	err := g.Wait()
 
@@ -133,6 +157,71 @@ func (s *Server) latencyReportSender(ctx context.Context) error {
 			s.mx.Unlock()
 		}
 	}
+}
+
+func (s *Server) multicastStage(ctx context.Context) error {
+	var buffer [1024]byte
+
+	ticker := time.NewTicker(3700 * time.Millisecond)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+
+		case <-ticker.C:
+			s.mx.Lock()
+			for token, entry := range s.stageMap {
+				msg := stagemessage.SessionCast{
+					StageToken:  token,
+					Name:        entry.name,
+					Author:      entry.author,
+					Description: entry.description,
+				}
+
+				size := msg.Encode(buffer[:])
+
+				err := s.server.Send(buffer[:size], s.multicastAddress)
+				if err != nil {
+					s.log.With(
+						"stage", token,
+						"err", err.Error()).Warn("failed to multicast")
+				}
+			}
+			s.mx.Unlock()
+		}
+	}
+}
+
+func (s *Server) StartStage(token message.Token, name, author, description string) error {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	if _, ok := s.stageMap[token]; ok {
+		return ErrDuplicateSession
+	}
+
+	s.stageMap[token] = stageEntry{
+		name:        name,
+		author:      author,
+		description: description,
+	}
+
+	return nil
+}
+
+func (s *Server) StopStage(token message.Token) error {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	if _, ok := s.stageMap[token]; !ok {
+		return ErrUnknownSession
+	}
+
+	delete(s.stageMap, token)
+
+	return nil
 }
 
 func (s *Server) StartSession(session *Session, controller controller.Controller) error {
