@@ -5,7 +5,7 @@ package client
 import (
 	"context"
 	"errors"
-	"github.com/marko-gacesa/udpstar/joinchannel"
+	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
@@ -43,7 +43,7 @@ func newStoryService(
 func (s *storyService) Start(ctx context.Context) error {
 	const requestDelay = time.Second
 
-	requestTimer := joinchannel.SlicePtr(ctx, s.storyStreams, func(story *storyStream) <-chan time.Time {
+	requestTimer := channel.JoinSlicePtr(s.storyStreams, func(story *storyStream) <-chan time.Time {
 		return story.request.C
 	})
 

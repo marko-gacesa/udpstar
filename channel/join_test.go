@@ -1,15 +1,64 @@
 // Copyright (c) 2023 by Marko Gaćeša
 
-package joinchannel
+package channel
 
 import (
-	"context"
 	"reflect"
 	"testing"
 	"time"
 )
 
-func TestSlice(t *testing.T) {
+func TestChannel(t *testing.T) {
+	chInput := make(chan Input[int, string])
+
+	go func() {
+		aCh := make(chan int)
+		a := Input[int, string]{
+			ID: "a",
+			Ch: aCh,
+		}
+		bCh := make(chan int)
+		b := Input[int, string]{
+			ID: "b",
+			Ch: bCh,
+		}
+		chInput <- a
+		chInput <- b
+		close(chInput)
+
+		aCh <- 1
+		time.Sleep(time.Millisecond)
+		bCh <- 42
+		time.Sleep(time.Millisecond)
+		aCh <- 2
+		close(aCh)
+		time.Sleep(time.Millisecond)
+		bCh <- 66
+		time.Sleep(time.Millisecond)
+		bCh <- -1
+		close(bCh)
+	}()
+
+	chOut := Join[int, string](chInput)
+	var got []Result[int, string]
+	for res := range chOut {
+		got = append(got, res)
+	}
+
+	want := []Result[int, string]{
+		{1, "a"},
+		{42, "b"},
+		{2, "a"},
+		{66, "b"},
+		{-1, "b"},
+	}
+
+	if !reflect.DeepEqual(want, got) {
+		t.Errorf("want=%v got=%v", want, got)
+	}
+}
+
+func TestJoinSlice(t *testing.T) {
 	type testStruct struct {
 		ch chan int
 	}
@@ -33,26 +82,7 @@ func TestSlice(t *testing.T) {
 			want:     []Result[int, int]{},
 		},
 		{
-			name: "two-channels",
-			input: []testStruct{
-				{ch: make(chan int)},
-				{ch: make(chan int)},
-			},
-			scenario: func(structs []testStruct) {
-				structs[1].ch <- 42
-				time.Sleep(time.Millisecond)
-				structs[0].ch <- 66
-				time.Sleep(time.Millisecond)
-				structs[1].ch <- 13
-			},
-			want: []Result[int, int]{
-				{Data: 42, ID: 1},
-				{Data: 66, ID: 0},
-				{Data: 13, ID: 1},
-			},
-		},
-		{
-			name: "closing-channels",
+			name: "three-channels",
 			input: []testStruct{
 				{ch: make(chan int)},
 				{ch: make(chan int)},
@@ -82,15 +112,11 @@ func TestSlice(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ctx, cancelFn := context.WithCancel(context.Background())
-			ch := SlicePtr(ctx, test.input, func(el *testStruct) <-chan int {
+			ch := JoinSlicePtr(test.input, func(el *testStruct) <-chan int {
 				return el.ch
 			})
 
-			go func() {
-				defer cancelFn()
-				test.scenario(test.input)
-			}()
+			go test.scenario(test.input)
 
 			got := make([]Result[int, int], 0)
 			for v := range ch {
@@ -104,7 +130,7 @@ func TestSlice(t *testing.T) {
 	}
 }
 
-func TestMap(t *testing.T) {
+func TestJoinMap(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    map[string]chan int
@@ -133,8 +159,10 @@ func TestMap(t *testing.T) {
 				m["b"] <- 42
 				time.Sleep(time.Millisecond)
 				m["a"] <- 66
+				close(m["a"])
 				time.Sleep(time.Millisecond)
 				m["b"] <- 13
+				close(m["b"])
 			},
 			want: []Result[int, string]{
 				{Data: 42, ID: "b"},
@@ -142,46 +170,15 @@ func TestMap(t *testing.T) {
 				{Data: 13, ID: "b"},
 			},
 		},
-		{
-			name: "closing-channels",
-			input: map[string]chan int{
-				"a": make(chan int),
-				"b": make(chan int),
-				"c": make(chan int),
-			},
-			scenario: func(m map[string]chan int) {
-				m["b"] <- 1
-				time.Sleep(time.Millisecond)
-				close(m["b"])
-				m["c"] <- 2
-				time.Sleep(time.Millisecond)
-				m["a"] <- 3
-				time.Sleep(time.Millisecond)
-				close(m["a"])
-				m["c"] <- 4
-				time.Sleep(time.Millisecond)
-				close(m["c"])
-			},
-			want: []Result[int, string]{
-				{Data: 1, ID: "b"},
-				{Data: 2, ID: "c"},
-				{Data: 3, ID: "a"},
-				{Data: 4, ID: "c"},
-			},
-		},
 	}
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ctx, cancelFn := context.WithCancel(context.Background())
-			ch := Map(ctx, test.input, func(el chan int) <-chan int {
+			ch := JoinMap(test.input, func(el chan int) <-chan int {
 				return el
 			})
 
-			go func() {
-				defer cancelFn()
-				test.scenario(test.input)
-			}()
+			go test.scenario(test.input)
 
 			got := make([]Result[int, string], 0)
 			for v := range ch {

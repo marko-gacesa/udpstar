@@ -5,7 +5,7 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/marko-gacesa/udpstar/joinchannel"
+	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
@@ -114,13 +114,13 @@ func (s *sessionService) Start(ctx context.Context) error {
 }
 
 func (s *sessionService) start(ctx context.Context) error {
-	storyEntryCh := joinchannel.SlicePtr(ctx, s.stories, func(story *storyData) <-chan []byte {
+	storyEntryCh := channel.Context(ctx, channel.JoinSlicePtr(s.stories, func(story *storyData) <-chan []byte {
 		return story.Channel
-	})
+	}))
 
-	localActorActionCh := joinchannel.SlicePtr(ctx, s.localActors, func(actor *localActorData) <-chan []byte {
+	localActorActionCh := channel.Context(ctx, channel.JoinSlicePtr(s.localActors, func(actor *localActorData) <-chan []byte {
 		return actor.InputCh
-	})
+	}))
 
 	for {
 		select {

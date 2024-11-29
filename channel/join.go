@@ -1,9 +1,8 @@
 // Copyright (c) 2023 by Marko Gaćeša
 
-package joinchannel
+package channel
 
 import (
-	"context"
 	"sync"
 )
 
@@ -17,8 +16,7 @@ type Input[C, ID any] struct {
 	Ch <-chan C
 }
 
-func Channel[C any, ID any](
-	ctx context.Context,
+func Join[C any, ID any](
 	inputCh <-chan Input[C, ID],
 ) <-chan Result[C, ID] {
 	ch := make(chan Result[C, ID])
@@ -30,36 +28,26 @@ func Channel[C any, ID any](
 		}
 
 		wg.Add(1)
-		go func(ctx context.Context, elemCh <-chan C, id ID) {
+		go func(elemCh <-chan C, id ID) {
 			defer wg.Done()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case data, ok := <-elemCh:
-					if !ok {
-						return
-					}
-					ch <- Result[C, ID]{
-						Data: data,
-						ID:   id,
-					}
+			for data := range elemCh {
+				ch <- Result[C, ID]{
+					Data: data,
+					ID:   id,
 				}
 			}
-		}(ctx, elem.Ch, elem.ID)
+		}(elem.Ch, elem.ID)
 	}
 
 	go func() {
 		wg.Wait()
-		<-ctx.Done()
 		close(ch)
 	}()
 
 	return ch
 }
 
-func Slice[C any, V any](
-	ctx context.Context,
+func JoinSlice[C any, V any](
 	array []V,
 	getChFn func(V) <-chan C,
 ) <-chan Result[C, int] {
@@ -73,11 +61,10 @@ func Slice[C any, V any](
 			}
 		}
 	}()
-	return Channel(ctx, inputCh)
+	return Join(inputCh)
 }
 
-func SlicePtr[C any, V any](
-	ctx context.Context,
+func JoinSlicePtr[C any, V any](
 	array []V,
 	getChFn func(*V) <-chan C,
 ) <-chan Result[C, int] {
@@ -91,11 +78,10 @@ func SlicePtr[C any, V any](
 			}
 		}
 	}()
-	return Channel(ctx, inputCh)
+	return Join(inputCh)
 }
 
-func Map[C any, K comparable, V any](
-	ctx context.Context,
+func JoinMap[C any, K comparable, V any](
 	dict map[K]V,
 	getChFn func(V) <-chan C,
 ) <-chan Result[C, K] {
@@ -109,5 +95,5 @@ func Map[C any, K comparable, V any](
 			}
 		}
 	}()
-	return Channel(ctx, inputCh)
+	return Join(inputCh)
 }
