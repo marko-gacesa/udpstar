@@ -2,50 +2,68 @@
 
 package story
 
-// ParseServer decodes ServerMessage from the data after the message.Category has already been stripped.
-func ParseServer(buf []byte) (msgType Type, msg ServerMessage) {
-	msgType = Type(buf[0])
-	buf = buf[1:]
+import "github.com/marko-gacesa/udpstar/udpstar/message"
 
-	switch msgType {
-	case TypeTest:
-		msg = &TestServer{}
-	case TypeAction:
-		msg = &ActionConfirm{}
-	case TypeStory:
-		msg = &StoryPack{}
-	case TypeLatencyReport:
-		msg = &LatencyReport{}
-	default:
-		return
+func checkType(s *message.Deserializer, t Type) bool {
+	var b byte
+	s.Get8(&b)
+	return Type(b) == t
+}
+
+func ParseServer(buf []byte) ServerMessage {
+	if len(buf) < sizeServerBase {
+		return nil
 	}
 
-	_ = msg.Get(buf)
+	switch t := Type(buf[5]); t {
+	case TypeTest:
+		var m TestServer
+		if m.Get(buf) > 0 {
+			return &m
+		}
+	case TypeAction:
+		var m ActionConfirm
+		if m.Get(buf) > 0 {
+			return &m
+		}
+	case TypeStory:
+		var m StoryPack
+		if m.Get(buf) > 0 {
+			return &m
+		}
+	case TypeLatencyReport:
+		var m LatencyReport
+		if m.Get(buf) > 0 {
+			return &m
+		}
+	}
 
-	return
+	return nil
 }
 
 // ParseClient decodes ClientMessage from the data after the message.Category has already been stripped.
-func ParseClient(buf []byte) (msgType Type, msg ClientMessage) {
-	msgType = Type(buf[0])
-	buf = buf[1:]
-
-	switch msgType {
-	case TypeTest:
-		msg = &TestClient{}
-	case TypeAction:
-		msg = &ActionPack{}
-	case TypeStory:
-		msg = &StoryConfirm{}
-	default:
-		return
+func ParseClient(buf []byte) ClientMessage {
+	if len(buf) < sizeClientBase {
+		return nil
 	}
 
-	_ = msg.Get(buf)
+	switch t := Type(buf[5]); t {
+	case TypeTest:
+		var m TestClient
+		if m.Get(buf) > 0 {
+			return &m
+		}
+	case TypeAction:
+		var m ActionPack
+		if m.Get(buf) > 0 {
+			return &m
+		}
+	case TypeStory:
+		var m StoryConfirm
+		if m.Get(buf) > 0 {
+			return &m
+		}
+	}
 
-	return
-}
-
-func EncodedSize(msg Message) int {
-	return 2 + msg.Size()
+	return nil
 }

@@ -18,13 +18,13 @@ import (
 type storyService struct {
 	storyStreams []storyStream
 	receiveCh    chan *storymessage.StoryPack
-	sender       clientSender
+	sendCh       chan<- storymessage.ClientMessage
 	log          *slog.Logger
 }
 
 func newStoryService(
 	stories []Story,
-	sender clientSender,
+	sendCh chan<- storymessage.ClientMessage,
 	log *slog.Logger,
 ) storyService {
 	storyStreams := make([]storyStream, len(stories))
@@ -35,7 +35,7 @@ func newStoryService(
 	return storyService{
 		storyStreams: storyStreams,
 		receiveCh:    make(chan *storymessage.StoryPack),
-		sender:       sender,
+		sendCh:       sendCh,
 		log:          log,
 	}
 }
@@ -108,11 +108,11 @@ func (s *storyService) sendConfirm(storyToken message.Token, lastSeq sequence.Se
 		missing = append(missing, r)
 
 		if len(missing) == storymessage.LenStoryConfirm {
-			s.sender.clientSend(&storymessage.StoryConfirm{
+			s.sendCh <- &storymessage.StoryConfirm{
 				StoryToken:   storyToken,
 				LastSequence: lastSeq,
 				Missing:      slices.Clone(missing),
-			})
+			}
 
 			missing = missing[:0]
 		}
@@ -120,11 +120,11 @@ func (s *storyService) sendConfirm(storyToken message.Token, lastSeq sequence.Se
 		return true
 	})
 
-	s.sender.clientSend(&storymessage.StoryConfirm{
+	s.sendCh <- &storymessage.StoryConfirm{
 		StoryToken:   storyToken,
 		LastSequence: lastSeq,
 		Missing:      missing,
-	})
+	}
 }
 
 func (s *storyService) stop() {

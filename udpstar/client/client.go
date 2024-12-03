@@ -5,31 +5,37 @@ package client
 import (
 	"context"
 	"errors"
-	"fmt"
-	"github.com/marko-gacesa/udpstar/udp"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
+	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
-	"strings"
 	"time"
 )
+
+type Sender interface {
+	Send([]byte) error
+}
 
 type Client struct {
 	clientToken  message.Token
 	sessionToken message.Token
 
-	udpSrv    udpService
+	sender Sender
+
 	pingSrv   pingService
 	actionSrv actionService
 	storySrv  storyService
+
+	sendCh chan storymessage.ClientMessage
+	pingCh chan pingmessage.Ping
 
 	log *slog.Logger
 }
 
 func New(
-	client *udp.Client,
+	sender Sender,
 	session Session,
 	opts ...func(*Client),
 ) (*Client, error) {
@@ -40,16 +46,20 @@ func New(
 	c := &Client{
 		clientToken:  session.ClientToken,
 		sessionToken: session.Token,
+		sender:       sender,
+		sendCh:       make(chan storymessage.ClientMessage),
+		pingCh:       make(chan pingmessage.Ping),
 		log:          slog.Default(),
 	}
 	for _, opt := range opts {
 		opt(c)
 	}
 
-	c.udpSrv = newUDPService(client, c.log)
-	c.pingSrv = newPingService(c)
-	c.actionSrv = newActionService(session.Actors, c, &c.pingSrv, c.log)
-	c.storySrv = newStoryService(session.Stories, c, c.log)
+	c.pingSrv = newPingService(c.pingCh)
+	c.actionSrv = newActionService(session.Actors, c.sendCh, &c.pingSrv, c.log)
+	c.storySrv = newStoryService(session.Stories, c.sendCh, c.log)
+
+	c.log = c.log.With("client", c.clientToken)
 
 	return c, nil
 }
@@ -65,17 +75,47 @@ var WithLogger = func(log *slog.Logger) func(*Client) {
 func (c *Client) Start(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
-	g.Go(func() error {
-		return c.processIncomingMessages(ctx)
-	})
+	go func() {
+		var buffer [pingmessage.SizeOfPing]byte
+		for ping := range c.pingCh {
+			size := ping.Put(buffer[:])
 
-	g.Go(func() error {
-		return c.udpSrv.Listen(ctx)
-	})
+			c.log.Debug("send ping",
+				"messageID", ping.MessageID,
+				"size", size)
 
-	g.Go(func() error {
-		return c.udpSrv.StartSender(ctx)
-	})
+			err := c.sender.Send(buffer[:size])
+			if err != nil {
+				c.log.Error("failed to send ping message to server")
+			}
+		}
+	}()
+
+	go func() {
+		const bufferSize = 4 << 10
+		var buffer [bufferSize]byte
+
+		for msg := range c.sendCh {
+			msg.SetClientToken(c.clientToken)
+			msg.SetLatency(c.pingSrv.Latency())
+
+			size := msg.Put(buffer[:])
+			if size > storymessage.MaxMessageSize {
+				c.log.Warn("sending large message",
+					"size", size)
+			}
+
+			c.log.Debug("client sends message",
+				"type", msg.Type().String(),
+				"size", size)
+
+			err := c.sender.Send(buffer[:size])
+			if err != nil {
+				c.log.Error("failed to send message to server",
+					"size", size)
+			}
+		}
+	}()
 
 	g.Go(func() error {
 		return c.pingSrv.Start(ctx)
@@ -91,101 +131,83 @@ func (c *Client) Start(ctx context.Context) error {
 
 	err := g.Wait()
 
-	log := c.log.With("err", err)
-	if errors.Is(err, context.Canceled) {
-		log.Info("client stopped")
+	close(c.pingCh)
+	close(c.sendCh)
+
+	if err == nil || errors.Is(err, context.Canceled) {
+		c.log.Info("client stopped")
 	} else {
-		log.Error("client aborted")
+		c.log.Error("client aborted",
+			"err", err)
 	}
 
 	return err
 }
 
-func (c *Client) Quality() time.Duration {
-	return c.storySrv.Quality()
-}
+func (c *Client) HandleIncomingMessages(ctx context.Context, data []byte) {
+	defer util.Recover(c.log)
 
-func (c *Client) processIncomingMessages(ctx context.Context) error {
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-
-		case m, ok := <-c.udpSrv.Channel():
-			if !ok {
-				return nil
-			}
-
-			switch m.Category {
-			case pingmessage.CategoryPing:
-				msgPong := pingmessage.ParsePong(m.Raw)
-				c.handlePingMessage(ctx, msgPong)
-			case storymessage.CategoryStory:
-				msgType, msg := storymessage.ParseServer(m.Raw)
-				if msg == nil {
-					c.log.With("size", len(m.Raw)).Debug("received invalid message")
-					continue
-				}
-
-				if msg.GetSessionToken() != c.sessionToken {
-					c.log.With("type", msgType).Warn("received message for wrong session")
-					continue
-				}
-
-				c.handleStoryMessage(ctx, msgType, msg)
-			}
-		}
+	if len(data) == 0 {
+		c.log.Warn("received empty message")
+		return
 	}
+
+	if msgPong, ok := pingmessage.ParsePong(data); ok {
+		c.log.Debug("received pong",
+			"messageID", msgPong.MessageID)
+		c.pingSrv.HandlePong(ctx, msgPong)
+		return
+	}
+
+	if msg := storymessage.ParseServer(data); msg != nil {
+		if msg.GetSessionToken() != c.sessionToken {
+			c.log.Warn("received message for wrong session",
+				"session", msg.GetSessionToken(),
+				"type", msg.Type())
+			return
+		}
+
+		c.handleStoryMessage(ctx, msg)
+		return
+	}
+
+	c.log.Warn("received unrecognized message")
 }
 
-func (c *Client) handlePingMessage(ctx context.Context, msg pingmessage.Pong) {
-	c.pingSrv.HandlePong(ctx, msg)
-}
-
-func (c *Client) handleStoryMessage(ctx context.Context, msgType storymessage.Type, msg storymessage.ServerMessage) {
+func (c *Client) handleStoryMessage(ctx context.Context, msg storymessage.ServerMessage) {
+	msgType := msg.Type()
 	switch msgType {
 	case storymessage.TypeTest:
 		msgTest := msg.(*storymessage.TestServer)
-		c.log.With("payload", msgTest.Payload).Debug("test message")
+		c.log.Info("received test message",
+			"payload", msgTest.Payload)
 
 	case storymessage.TypeAction:
 		msgActionConfirm := msg.(*storymessage.ActionConfirm)
+		c.log.Debug("received action",
+			"session", msgActionConfirm.SessionToken,
+			"actor", msgActionConfirm.ActorToken)
 		c.actionSrv.ConfirmActions(ctx, msgActionConfirm)
 
 	case storymessage.TypeStory:
 		msgStoryPack := msg.(*storymessage.StoryPack)
+		c.log.Debug("client received story pack",
+			"session", msgStoryPack.SessionToken,
+			"story", msgStoryPack.StoryToken)
 		c.storySrv.HandlePack(ctx, msgStoryPack)
 
 	case storymessage.TypeLatencyReport:
 		msgLatencyRep := msg.(*storymessage.LatencyReport)
 
-		sb := strings.Builder{}
-		for _, latency := range msgLatencyRep.Latencies {
-			s := fmt.Sprintf("\nstate=%-7s latency[ms]=%-8.3f name=%s",
-				latency.State.String(), latency.Latency.Seconds(), latency.Name)
-			sb.WriteString(s)
-		}
-		c.log.Info(sb.String())
+		_ = msgLatencyRep
+		c.log.Info("received latency report")
 
 	default:
-		c.log.With("type", msgType).Warn("received message of unknown type")
+		c.log.Warn("received message of unknown type",
+			"type", msgType)
 	}
 }
 
-type clientSender interface {
-	clientSend(msg storymessage.ClientMessage)
-}
-
-type pingSender interface {
-	pingSend(ping pingmessage.Ping)
-}
-
-func (c *Client) pingSend(ping pingmessage.Ping) {
-	c.udpSrv.Send(&ping)
-}
-
-func (c *Client) clientSend(msg storymessage.ClientMessage) {
-	msg.SetClientToken(c.clientToken)
-	msg.SetLatency(c.pingSrv.Latency())
-	c.udpSrv.Send(msg)
+func (c *Client) Quality() time.Duration {
+	return c.storySrv.Quality()
 }

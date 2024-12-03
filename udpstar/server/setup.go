@@ -95,7 +95,7 @@ func (s *Session) Validate() error {
 		}
 
 		_, ok = storyActors[a.Story.Token]
-		if ok {
+		if !ok {
 			return fmt.Errorf("local actor %d linked to unknown story", i)
 		}
 

@@ -16,14 +16,14 @@ import (
 type actionService struct {
 	actorActions []actorAction
 	confirmCh    chan *storymessage.ActionConfirm
-	sender       clientSender
+	sendCh       chan<- storymessage.ClientMessage
 	latency      latencyGetter
 	log          *slog.Logger
 }
 
 func newActionService(
 	actors []Actor,
-	sender clientSender,
+	sendCh chan<- storymessage.ClientMessage,
 	latency latencyGetter,
 	log *slog.Logger,
 ) actionService {
@@ -35,7 +35,7 @@ func newActionService(
 	return actionService{
 		actorActions: actorActions,
 		confirmCh:    make(chan *storymessage.ActionConfirm),
-		sender:       sender,
+		sendCh:       sendCh,
 		latency:      latency,
 		log:          log,
 	}
@@ -112,10 +112,10 @@ func (s *actionService) Start(ctx context.Context) error {
 				})
 			}
 			if len(missing) > 0 {
-				s.sender.clientSend(&storymessage.ActionPack{
+				s.sendCh <- &storymessage.ActionPack{
 					ActorToken: actor.Token,
 					Actions:    missing,
-				})
+				}
 			}
 		}
 	}
@@ -128,12 +128,10 @@ func (s *actionService) sendActions(actor *actorAction) int {
 		return 0
 	}
 
-	msg := storymessage.ActionPack{
+	s.sendCh <- &storymessage.ActionPack{
 		ActorToken: actor.Token,
 		Actions:    actions,
 	}
-
-	s.sender.clientSend(&msg)
 
 	return len(actions)
 }

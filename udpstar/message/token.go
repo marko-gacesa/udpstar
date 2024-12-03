@@ -24,7 +24,7 @@ func (t *Token) Get(bytes []byte) int {
 
 func (t *Token) String() string {
 	var buff [4]byte
-	binary.LittleEndian.PutUint32(buff[:], uint32(*t))
+	binary.BigEndian.PutUint32(buff[:], uint32(*t))
 	return hex.EncodeToString(buff[:])
 }
 

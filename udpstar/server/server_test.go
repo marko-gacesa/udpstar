@@ -1,19 +1,24 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2024 by Marko Gaćeša
 
 package server
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/udp"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"golang.org/x/sync/errgroup"
+	"net"
 	"testing"
 	"time"
 )
 
+type mockConnection struct{}
+
+func (m mockConnection) Send([]byte, net.UDPAddr) error {
+	panic("not implemented")
+}
+
 func TestServer(t *testing.T) {
-	udpSrv := udp.NewServer(56382)
-	server := NewServer(udpSrv)
+	server := NewServer(mockConnection{})
 
 	g, ctx := errgroup.WithContext(context.Background())
 

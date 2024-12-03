@@ -13,7 +13,7 @@ type pingService struct {
 	latency atomic.Int64
 	pings   [pingDimension]pingInfo
 	pongCh  chan pingmessage.Pong
-	sender  pingSender
+	pingCh  chan<- pingmessage.Ping
 }
 
 type pingInfo struct {
@@ -31,12 +31,12 @@ const (
 	pingPeriod    = time.Second
 )
 
-func newPingService(sender pingSender) pingService {
+func newPingService(pingCh chan<- pingmessage.Ping) pingService {
 	return pingService{
 		latency: atomic.Int64{},
 		pings:   [pingDimension]pingInfo{},
 		pongCh:  make(chan pingmessage.Pong),
-		sender:  sender,
+		pingCh:  pingCh,
 	}
 }
 
@@ -65,10 +65,10 @@ func (s *pingService) Start(ctx context.Context) error {
 				received: time.Time{},
 			}
 
-			s.sender.pingSend(pingmessage.Ping{
+			s.pingCh <- pingmessage.Ping{
 				MessageID:  id,
 				ClientTime: now,
-			})
+			}
 
 		case msg := <-s.pongCh:
 			idx := msg.MessageID % pingDimension

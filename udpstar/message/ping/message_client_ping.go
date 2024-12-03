@@ -7,6 +7,8 @@ import (
 	"time"
 )
 
+const SizeOfPing = message.SizeOfPrefix + 1 + 4 + 8
+
 // Ping is used by a client to determine latency. The process is periodically initiated by a client.
 // Usage: A client sets its ClientTime=Now and sends the message to the server.
 // Upon receiving the message, the server immediately returns the message as TypePong to the client.
@@ -18,25 +20,23 @@ type Ping struct {
 
 var _ Message = (*Ping)(nil)
 
-const pingSize = 4 + 8
-
-func (m *Ping) Size() int { return pingSize }
+func (m *Ping) Size() int { return SizeOfPing }
 
 func (m *Ping) Put(buf []byte) int {
 	s := message.NewSerializer(buf)
+	s.PutPrefix()
+	s.PutCategory(CategoryPing)
 	s.Put32(m.MessageID)
 	s.PutTime(m.ClientTime)
 	return s.Len()
 }
 
 func (m *Ping) Get(buf []byte) int {
-	s := message.NewSerializer(buf)
+	s := message.NewDeserializer(buf)
+	if ok := s.CheckPrefix() && s.CheckCategory(CategoryPing); !ok {
+		return 0
+	}
 	s.Get32(&m.MessageID)
 	s.GetTime(&m.ClientTime)
 	return s.Len()
-}
-
-func (m *Ping) Encode(buf []byte) int {
-	buf[0] = byte(CategoryPing)
-	return 1 + m.Put(buf[1:])
 }

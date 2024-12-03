@@ -13,11 +13,13 @@ type SessionCast struct {
 
 var _ interface {
 	message.Getter
-	message.Encoder
+	message.Putter
 } = (*SessionCast)(nil)
 
 func (m *SessionCast) Put(buf []byte) int {
 	s := message.NewSerializer(buf)
+	s.PutPrefix()
+	s.PutCategory(CategoryStage)
 	s.Put(&m.StageToken)
 	s.PutStr(m.Name)
 	s.PutStr(m.Author)
@@ -26,15 +28,16 @@ func (m *SessionCast) Put(buf []byte) int {
 }
 
 func (m *SessionCast) Get(buf []byte) int {
-	s := message.NewSerializer(buf)
+	s := message.NewDeserializer(buf)
+	if ok := s.CheckPrefix(); !ok {
+		return 0
+	}
+	if ok := s.CheckCategory(CategoryStage); !ok {
+		return 0
+	}
 	s.Get(&m.StageToken)
 	s.GetStr(&m.Name)
 	s.GetStr(&m.Author)
 	s.GetStr(&m.Description)
 	return s.Len()
-}
-
-func (m *SessionCast) Encode(buf []byte) int {
-	buf[0] = byte(CategoryStage)
-	return 1 + m.Put(buf[1:])
 }

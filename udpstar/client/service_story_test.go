@@ -41,10 +41,10 @@ func TestStoryService_HandlePack(t *testing.T) {
 		},
 	}
 
-	msgRec := messageRecorder{}
+	msgRec := newMessageRecorder()
 	storyRec := entryRecorder{}
 
-	storySrv := newStoryService(stories, &msgRec, slog.Default())
+	storySrv := newStoryService(stories, msgRec.Chan(), slog.Default())
 
 	g, ctx := errgroup.WithContext(context.Background())
 
@@ -95,6 +95,8 @@ func TestStoryService_HandlePack(t *testing.T) {
 
 	g.Wait()
 
+	messages := msgRec.Stop()
+
 	compareStoryElements(t, []sequence.Entry{
 		storyEntry1,
 		storyEntry2,
@@ -122,7 +124,7 @@ func TestStoryService_HandlePack(t *testing.T) {
 			LastSequence: 3,
 			Missing:      nil,
 		},
-	}, msgRec.Messages)
+	}, messages)
 }
 
 func compareStoryElements(t *testing.T, wantEntries []sequence.Entry, gotEntries []sequence.Entry) {

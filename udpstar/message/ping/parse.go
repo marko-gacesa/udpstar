@@ -2,16 +2,20 @@
 
 package ping
 
-// ParsePing decodes Ping from the data after the message.Category has already been stripped.
-func ParsePing(buf []byte) Ping {
+func ParsePing(buf []byte) (Ping, bool) {
 	var msg Ping
-	_ = msg.Get(buf)
-	return msg
+	if len(buf) < msg.Size() {
+		return msg, false
+	}
+	size := msg.Get(buf)
+	return msg, size > 0
 }
 
-// ParsePong decodes Pong from the data after the message.Category has already been stripped.
-func ParsePong(buf []byte) Pong {
+func ParsePong(buf []byte) (Pong, bool) {
 	var msg Pong
-	_ = msg.Get(buf)
-	return msg
+	if len(buf) < msg.Size() {
+		return msg, false
+	}
+	size := msg.Get(buf)
+	return msg, size > 0
 }

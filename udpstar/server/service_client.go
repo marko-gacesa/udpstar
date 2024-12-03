@@ -26,7 +26,7 @@ type clientService struct {
 	dataUpdateCh chan clientData
 	dataGetCh    chan chan<- clientStatePackage
 
-	udpSender udpSender
+	udpSender Sender
 	log       *slog.Logger
 
 	state storymessage.ClientState
@@ -43,14 +43,10 @@ type clientStatePackage struct {
 	Latency time.Duration
 }
 
-type udpSender interface {
-	Send([]byte, net.UDPAddr) error
-}
-
 func newClientService(
 	client Client,
 	session *sessionService,
-	udpSender udpSender,
+	udpSender Sender,
 	log *slog.Logger,
 ) *clientService {
 	c := &clientService{}
@@ -121,7 +117,7 @@ func (c *clientService) Start(ctx context.Context) error {
 			func() {
 				defer util.Recover(c.log)
 
-				size := msg.Encode(buffer[:])
+				size := msg.Put(buffer[:])
 				err := c.udpSender.Send(buffer[:size], c.data.Address)
 				if err != nil {
 					c.log.With(
@@ -201,7 +197,7 @@ func (c *clientService) HandleActionPack(
 
 	msgActionConfirm := storymessage.ActionConfirm{
 		HeaderServer: storymessage.HeaderServer{
-			SessionToken: c.Token,
+			SessionToken: c.Session.Token,
 		},
 		ActorToken:   actor.Token,
 		LastSequence: lastActionSeq,

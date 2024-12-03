@@ -8,6 +8,6 @@ import (
 
 type Message interface {
 	message.Getter
-	message.Encoder
+	message.Putter
 	message.Sizer
 }

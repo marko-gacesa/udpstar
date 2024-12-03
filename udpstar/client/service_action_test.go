@@ -10,7 +10,6 @@ import (
 	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"reflect"
-	"sync"
 	"testing"
 	"time"
 )
@@ -33,10 +32,10 @@ func TestActionService_Send(t *testing.T) {
 		},
 	}
 
-	var msgRec messageRecorder
+	msgRec := newMessageRecorder()
 	lat := latencyFixed(100 * time.Millisecond)
 
-	actionSrv := newActionService(actors, &msgRec, lat, slog.Default())
+	actionSrv := newActionService(actors, msgRec.Chan(), lat, slog.Default())
 
 	g, ctx := errgroup.WithContext(context.Background())
 
@@ -102,7 +101,9 @@ func TestActionService_Send(t *testing.T) {
 		{action3},
 	}
 
-	compareActions(t, actors, wantActions, msgRec)
+	messages := msgRec.Stop()
+
+	compareActions(t, actors, wantActions, messages)
 }
 
 func TestActionService_Missing(t *testing.T) {
@@ -121,10 +122,10 @@ func TestActionService_Missing(t *testing.T) {
 		},
 	}
 
-	var msgRec messageRecorder
+	msgRec := newMessageRecorder()
 	lat := latencyFixed(100 * time.Millisecond)
 
-	actionSrv := newActionService(actors, &msgRec, lat, slog.Default())
+	actionSrv := newActionService(actors, msgRec.Chan(), lat, slog.Default())
 
 	g, ctx := errgroup.WithContext(context.Background())
 
@@ -176,18 +177,20 @@ func TestActionService_Missing(t *testing.T) {
 		{action1, action2},
 	}
 
-	compareActions(t, actors, wantActions, msgRec)
+	messages := msgRec.Stop()
+
+	compareActions(t, actors, wantActions, messages)
 }
 
-func compareActions(t *testing.T, actors []Actor, wantActions [][]sequence.Entry, msgRec messageRecorder) {
-	if want, got := len(wantActions), len(msgRec.Messages); want != got {
+func compareActions(t *testing.T, actors []Actor, wantActions [][]sequence.Entry, messages []storymessage.ClientMessage) {
+	if want, got := len(wantActions), len(messages); want != got {
 		t.Errorf("message count mismatch: want=%d got=%d", want, got)
-		size := min(len(wantActions), len(msgRec.Messages))
+		size := min(len(wantActions), len(messages))
 		wantActions = wantActions[:size]
-		msgRec.Messages = msgRec.Messages[:size]
+		messages = messages[:size]
 	}
 
-	for i, msg := range msgRec.Messages {
+	for i, msg := range messages {
 		msgActionPack, ok := msg.(*storymessage.ActionPack)
 		if !ok {
 			t.Errorf("message %d not action pack", i)
@@ -217,14 +220,43 @@ func compareActions(t *testing.T, actors []Actor, wantActions [][]sequence.Entry
 }
 
 type messageRecorder struct {
-	mx       sync.Mutex
-	Messages []storymessage.ClientMessage
+	ch       chan storymessage.ClientMessage
+	stop     chan struct{}
+	wait     chan struct{}
+	messages []storymessage.ClientMessage
 }
 
-func (s *messageRecorder) clientSend(message storymessage.ClientMessage) {
-	s.mx.Lock()
-	s.Messages = append(s.Messages, message)
-	s.mx.Unlock()
+func newMessageRecorder() *messageRecorder {
+	r := &messageRecorder{
+		ch:       make(chan storymessage.ClientMessage),
+		stop:     make(chan struct{}),
+		wait:     make(chan struct{}),
+		messages: make([]storymessage.ClientMessage, 0),
+	}
+
+	go func() {
+		defer close(r.wait)
+		for {
+			select {
+			case m := <-r.ch:
+				r.messages = append(r.messages, m)
+			case <-r.stop:
+				return
+			}
+		}
+	}()
+
+	return r
+}
+
+func (s *messageRecorder) Chan() chan<- storymessage.ClientMessage {
+	return s.ch
+}
+
+func (s *messageRecorder) Stop() []storymessage.ClientMessage {
+	close(s.stop)
+	<-s.wait
+	return s.messages
 }
 
 type latencyFixed time.Duration

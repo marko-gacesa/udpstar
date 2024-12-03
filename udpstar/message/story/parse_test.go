@@ -4,7 +4,6 @@ package story
 
 import (
 	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"math"
 	"reflect"
 	"testing"
@@ -46,24 +45,16 @@ func TestClientSerialize(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(msg.Type().String(), func(t *testing.T) {
-			size := msg.Encode(buf[:])
+			size := msg.Put(buf[:])
 
-			if want, got := CategoryStory, message.Category(buf[0]); want != got {
-				t.Errorf("type mismatch: want=%v got=%v", want, got)
+			if msg.Size() != size {
+				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
 			}
 
-			msgType, msgClone := ParseClient(buf[1:size])
-
-			if want, got := msg.Type(), msgType; want != got {
-				t.Errorf("type mismatch: want=%s got=%s", want.String(), got.String())
-			}
+			msgClone := ParseClient(buf[:size])
 
 			if !reflect.DeepEqual(msg, msgClone) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
-			}
-
-			if want, got := size, EncodedSize(msg); want != got {
-				t.Errorf("size mismatch: want=%d got=%d", want, got)
 			}
 		})
 	}
@@ -110,24 +101,16 @@ func TestServerSerialize(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(msg.Type().String(), func(t *testing.T) {
-			size := msg.Encode(buf[:])
+			size := msg.Put(buf[:])
 
-			if want, got := CategoryStory, message.Category(buf[0]); want != got {
-				t.Errorf("type mismatch: want=%v got=%v", want, got)
+			if msg.Size() != size {
+				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
 			}
 
-			msgType, msgClone := ParseServer(buf[1:size])
-
-			if want, got := msg.Type(), msgType; want != got {
-				t.Errorf("type mismatch: want=%s got=%s", want.String(), got.String())
-			}
+			msgClone := ParseServer(buf[:size])
 
 			if !reflect.DeepEqual(msg, msgClone) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
-			}
-
-			if want, got := size, EncodedSize(msg); want != got {
-				t.Errorf("size mismatch: want=%d got=%d", want, got)
 			}
 		})
 	}

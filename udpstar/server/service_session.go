@@ -54,7 +54,7 @@ type storyGetPackage struct {
 
 func newSessionService(
 	session *Session,
-	udpSender udpSender,
+	udpSender Sender,
 	controller controller.Controller,
 	log *slog.Logger,
 ) (*sessionService, error) {
@@ -85,7 +85,7 @@ func newSessionService(
 	s.storyGetCh = make(chan storyGetPackage)
 
 	s.controller = controller
-	s.log = log
+	s.log = log.With("session", session.Token)
 
 	return s, nil
 }
@@ -143,6 +143,10 @@ func (s *sessionService) start(ctx context.Context) error {
 				Stories:    recentEntries,
 			}
 
+			s.log.Debug("sending story pack to clients",
+				"story", story.Token,
+				"count", len(recentEntries))
+
 			for i := range s.clients {
 				s.clients[i].Send(ctx, msg)
 			}
@@ -162,7 +166,7 @@ func (s *sessionService) start(ctx context.Context) error {
 					storyEntries = append(storyEntries, entry)
 
 					msg.Stories = storyEntries
-					if storymessage.EncodedSize(&msg) < storymessage.MaxMessageSize {
+					if msg.Size() < storymessage.MaxMessageSize {
 						return true
 					}
 

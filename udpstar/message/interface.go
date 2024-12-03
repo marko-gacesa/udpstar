@@ -13,7 +13,3 @@ type Getter interface {
 type Sizer interface {
 	Size() int
 }
-
-type Encoder interface {
-	Encode([]byte) int
-}

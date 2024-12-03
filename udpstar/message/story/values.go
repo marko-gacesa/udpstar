@@ -7,9 +7,9 @@ import "github.com/marko-gacesa/udpstar/udpstar/message"
 const (
 	CategoryStory message.Category = 3
 
-	MaxMessageSize = message.MaxMessageSize - 1
+	MaxMessageSize = message.MaxMessageSize
 
-	LenStoryConfirm      = 61
+	LenStoryConfirm      = 60
 	LenLatencyReport     = 8
 	LenLatencyReportName = 52
 )

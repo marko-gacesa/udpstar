@@ -149,14 +149,9 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 	clientMsgs := map[int][]*storymessage.StoryPack{}
 
 	for i, udpMsg := range sessionMsgRec.records {
-		if udpMsg.Category != storymessage.CategoryStory {
-			t.Errorf("message %d is not category story, but %d", i, udpMsg.Category)
-			continue
-		}
-
-		msgType, msg := storymessage.ParseServer(udpMsg.Bytes)
-		if msgType != storymessage.TypeStory {
-			t.Errorf("message %d is not type story, but %s", i, msgType.String())
+		msg := storymessage.ParseServer(udpMsg.Bytes)
+		if msg == nil || msg.Type() != storymessage.TypeStory {
+			t.Errorf("message %d is not type story", i)
 			continue
 		}
 

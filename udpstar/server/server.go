@@ -4,7 +4,7 @@ package server
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/udp"
+	"errors"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
@@ -17,22 +17,23 @@ import (
 	"time"
 )
 
-type Server struct {
-	server *udp.Server
+type Sender interface {
+	Send([]byte, net.UDPAddr) error
+}
 
-	multicastAddress net.UDPAddr
+type Server struct {
+	sender Sender
 
 	mx         sync.Mutex
 	clientMap  map[message.Token]*clientService
 	sessionMap map[message.Token]sessionEntry
 	sessionWG  sync.WaitGroup
 
-	stageMap map[message.Token]stageEntry
+	multicastAddress net.UDPAddr
+	stageMap         map[message.Token]stageEntry
 
 	log *slog.Logger
 }
-
-const responseBufferSize = 4 << 10
 
 type sessionEntry struct {
 	srv      *sessionService
@@ -45,9 +46,9 @@ type stageEntry struct {
 	description string
 }
 
-func NewServer(server *udp.Server, opts ...func(*Server)) *Server {
+func NewServer(sender Sender, opts ...func(*Server)) *Server {
 	s := &Server{
-		server:     server,
+		sender:     sender,
 		mx:         sync.Mutex{},
 		clientMap:  make(map[message.Token]*clientService),
 		sessionMap: make(map[message.Token]sessionEntry),
@@ -80,10 +81,6 @@ func (s *Server) Start(ctx context.Context) error {
 	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
-		return s.handleIncomingMessages(ctx)
-	})
-
-	g.Go(func() error {
 		return s.latencyReportSender(ctx)
 	})
 
@@ -96,7 +93,8 @@ func (s *Server) Start(ctx context.Context) error {
 	err := g.Wait()
 
 	for sessionToken, entry := range s.sessionMap {
-		s.log.With("session", sessionToken).Debug("stopping session...")
+		s.log.Debug("aborting session...",
+			"session", sessionToken.String())
 		entry.cancelFn()
 	}
 
@@ -105,30 +103,28 @@ func (s *Server) Start(ctx context.Context) error {
 	return err
 }
 
-func (s *Server) handleIncomingMessages(ctx context.Context) error {
-	var responseBuffer [responseBufferSize]byte
-
-	return s.server.Listen(ctx, func(data []byte, addr net.UDPAddr) []byte {
-		if len(data) == 0 {
-			s.log.With("addr", addr.String()).Debug("received empty message")
-			return nil
-		}
-
-		category := message.Category(data[0])
-		data = data[1:]
-
-		switch category {
-		case pingmessage.CategoryPing:
-			return s.handlePingMessage(ctx, &responseBuffer, data, addr)
-		case storymessage.CategoryStory:
-			return s.handleStoryMessage(ctx, &responseBuffer, data, addr)
-		}
-
-		s.log.With("addr", addr.String(), "category", category).
-			Debug("received message of unsupported category")
-
+func (s *Server) HandleIncomingMessages(ctx context.Context, data []byte, addr net.UDPAddr) []byte {
+	if len(data) == 0 {
+		s.log.Debug("server received empty message",
+			"addr", addr)
 		return nil
-	})
+	}
+
+	var responseBuffer []byte
+
+	if msgPing, ok := pingmessage.ParsePing(data); ok {
+		s.log.Debug("server received ping",
+			"addr", addr,
+			"messageID", msgPing.MessageID)
+		responseBuffer = s.handlePingMessage(&msgPing)
+	} else if msg := storymessage.ParseClient(data); msg != nil {
+		responseBuffer = s.handleStoryMessage(ctx, msg, addr)
+	} else {
+		s.log.Warn("received unrecognized message",
+			"addr", addr)
+	}
+
+	return responseBuffer
 }
 
 func (s *Server) latencyReportSender(ctx context.Context) error {
@@ -141,6 +137,8 @@ func (s *Server) latencyReportSender(ctx context.Context) error {
 			return ctx.Err()
 
 		case <-ticker.C:
+			s.log.Info("sending latency report to all sessions")
+
 			s.mx.Lock()
 			for _, entry := range s.sessionMap {
 				session := entry.srv
@@ -180,13 +178,13 @@ func (s *Server) multicastStage(ctx context.Context) error {
 					Description: entry.description,
 				}
 
-				size := msg.Encode(buffer[:])
+				size := msg.Put(buffer[:])
 
-				err := s.server.Send(buffer[:size], s.multicastAddress)
+				err := s.sender.Send(buffer[:size], s.multicastAddress)
 				if err != nil {
-					s.log.With(
+					s.log.Error("failed to multicast",
 						"stage", token,
-						"err", err.Error()).Warn("failed to multicast")
+						"err", err.Error())
 				}
 			}
 			s.mx.Unlock()
@@ -225,7 +223,7 @@ func (s *Server) StopStage(token message.Token) error {
 }
 
 func (s *Server) StartSession(session *Session, controller controller.Controller) error {
-	sessionSrv, err := newSessionService(session, s.server, controller, s.log)
+	sessionSrv, err := newSessionService(session, s.sender, controller, s.log)
 	if err != nil {
 		return err
 	}
@@ -262,16 +260,14 @@ func (s *Server) StartSession(session *Session, controller controller.Controller
 		defer s.sessionWG.Done()
 
 		err := sessionSrv.Start(ctx)
-		if err == context.Canceled {
-			s.log.With(
+		if err == nil || errors.Is(err, context.Canceled) {
+			s.log.Info("session stopped",
+				"session", session.Token)
+		} else {
+			s.log.Error("session aborted",
 				"session", session.Token,
-				"err", err.Error()).Info("session stopped")
-			return
+				"err", err.Error())
 		}
-
-		s.log.With(
-			"session", session.Token,
-			"err", err.Error()).Error("session aborted")
 	}()
 
 	return nil
@@ -299,35 +295,29 @@ func (s *Server) StopSession(sessionToken message.Token) error {
 	return nil
 }
 
-func (s *Server) handlePingMessage(ctx context.Context, responseBuffer *[responseBufferSize]byte, data []byte, addr net.UDPAddr) []byte {
-	msgPing := pingmessage.ParsePing(data)
-
+func (s *Server) handlePingMessage(msgPing *pingmessage.Ping) []byte {
 	msgPong := &pingmessage.Pong{
 		MessageID:  msgPing.MessageID,
 		ClientTime: msgPing.ClientTime,
 	}
 
-	size := msgPong.Put(responseBuffer[:])
-	return responseBuffer[:size]
+	responseBuffer := make([]byte, msgPong.Size())
+	msgPong.Put(responseBuffer)
+	return responseBuffer
 }
 
-func (s *Server) handleStoryMessage(ctx context.Context, responseBuffer *[responseBufferSize]byte, data []byte, addr net.UDPAddr) []byte {
-	msgType, msg := storymessage.ParseClient(data)
-	if msg == nil {
-		s.log.With("addr", addr.String()).Warn("failed to parse message")
-		return nil
-	}
-
+func (s *Server) handleStoryMessage(ctx context.Context, msg storymessage.ClientMessage, addr net.UDPAddr) []byte {
+	msgType := msg.Type()
 	clientToken := msg.GetClientToken()
 
 	s.mx.Lock()
 	client, ok := s.clientMap[clientToken]
 	s.mx.Unlock()
 	if !ok {
-		s.log.With(
-			"addr", addr.String(),
+		s.log.Warn("unknown client",
+			"addr", addr,
 			"msg", msgType.String(),
-			"client", clientToken).Warn("unknown client")
+			"client", clientToken)
 		return nil
 	}
 
@@ -345,41 +335,53 @@ func (s *Server) handleStoryMessage(ctx context.Context, responseBuffer *[respon
 	switch msgType {
 	case storymessage.TypeTest:
 		msgTest := msg.(*storymessage.TestClient)
-		s.log.With(
-			"addr", addr.String(),
+		s.log.Info("server received test message",
+			"addr", addr,
 			"msg", msgType.String(),
 			"client", clientToken,
 			"session", sessionToken,
-			"payload", string(msgTest.Payload)).Debug("test message")
+			"payload", msgTest.Payload)
 
 	case storymessage.TypeAction:
 		msgActionPack := msg.(*storymessage.ActionPack)
+		s.log.Debug("server received action pack",
+			"addr", addr,
+			"client", clientToken,
+			"session", sessionToken,
+			"actor", msgActionPack.ActorToken)
+
 		msgActionConfirm, err := client.HandleActionPack(ctx, msgActionPack)
 		if err != nil {
-			s.log.With(
-				"addr", addr.String(),
-				"msg", msgType.String(),
+			s.log.Warn("failed to handle action pack",
+				"addr", addr,
 				"client", clientToken,
 				"session", sessionToken,
 				"actor", msgActionPack.ActorToken,
-				"err", err.Error()).Warn("failed to handle action pack")
+				"err", err.Error())
 			return nil
 		}
 
-		size := msgActionConfirm.Put(responseBuffer[:])
-		return responseBuffer[:size]
+		responseBuffer := make([]byte, msgActionConfirm.Size())
+		msgActionConfirm.Put(responseBuffer)
+		return responseBuffer
 
 	case storymessage.TypeStory:
 		msgStoryConfirm := msg.(*storymessage.StoryConfirm)
+		s.log.Debug("server received story confirm",
+			"addr", addr,
+			"client", clientToken,
+			"session", sessionToken,
+			"story", msgStoryConfirm.StoryToken)
+
 		msgStoryPack, err := client.Session.HandleStoryConfirm(ctx, client, msgStoryConfirm)
 		if err != nil {
-			s.log.With(
-				"addr", addr.String(),
+			s.log.Error("failed to handle confirm story",
+				"addr", addr,
 				"msg", msgType.String(),
 				"client", clientToken,
 				"session", sessionToken,
 				"story", msgStoryConfirm.StoryToken,
-				"err", err.Error()).Warn("failed to handle confirm story")
+				"err", err.Error())
 			return nil
 		}
 
@@ -387,8 +389,9 @@ func (s *Server) handleStoryMessage(ctx context.Context, responseBuffer *[respon
 			return nil
 		}
 
-		size := msgStoryPack.Put(responseBuffer[:])
-		return responseBuffer[:size]
+		responseBuffer := make([]byte, msgStoryPack.Size())
+		msgStoryPack.Put(responseBuffer)
+		return responseBuffer
 	}
 
 	return nil

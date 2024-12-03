@@ -45,7 +45,8 @@ func TestLenStoryConfirm(t *testing.T) {
 		Missing:      make([]sequence.Range, LenStoryConfirm),
 	}
 
-	size := EncodedSize(msg)
+	var buf [1024]byte
+	size := msg.Put(buf[:])
 
 	t.Logf("maximum size of StoryConfirm: %d", size)
 	if size > MaxMessageSize {
@@ -63,7 +64,8 @@ func TestLenLatencyReport(t *testing.T) {
 		msg.Latencies[i].Name = strings.Repeat("a", LenLatencyReportName)
 	}
 
-	size := EncodedSize(msg)
+	var buf [1024]byte
+	size := msg.Put(buf[:])
 
 	t.Logf("maximum size of LatencyReport: %d", size)
 	if size > MaxMessageSize {

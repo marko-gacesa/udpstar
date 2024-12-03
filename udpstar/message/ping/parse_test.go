@@ -15,8 +15,13 @@ func TestSerializePing(t *testing.T) {
 
 	var buf [1024]byte
 
-	size := msg.Encode(buf[:])
-	msgClone := ParsePing(buf[1:size])
+	size := msg.Put(buf[:])
+	msgClone, ok := ParsePing(buf[:size])
+
+	if !ok {
+		t.Error("failed parse")
+		return
+	}
 
 	if msg.MessageID != msgClone.MessageID || !msg.ClientTime.Equal(msgClone.ClientTime) {
 		t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
@@ -30,8 +35,13 @@ func TestServerSerialize(t *testing.T) {
 	}
 
 	var buf [1024]byte
-	size := msg.Encode(buf[:])
-	msgClone := ParsePong(buf[1:size])
+	size := msg.Put(buf[:])
+	msgClone, ok := ParsePong(buf[:size])
+
+	if !ok {
+		t.Error("failed parse")
+		return
+	}
 
 	if msg.MessageID != msgClone.MessageID || !msg.ClientTime.Equal(msgClone.ClientTime) {
 		t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)

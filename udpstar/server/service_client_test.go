@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
@@ -19,9 +18,8 @@ import (
 )
 
 type udpRecord struct {
-	Category message.Category
-	Bytes    []byte
-	Addr     net.UDPAddr
+	Bytes []byte
+	Addr  net.UDPAddr
 }
 
 type udpRecorder struct {
@@ -32,9 +30,8 @@ type udpRecorder struct {
 func (rec *udpRecorder) Send(bytes []byte, addr net.UDPAddr) error {
 	rec.mx.Lock()
 	rec.records = append(rec.records, udpRecord{
-		Category: message.Category(bytes[0]),
-		Bytes:    slices.Clone(bytes[1:]),
-		Addr:     addr,
+		Bytes: slices.Clone(bytes[:]),
+		Addr:  addr,
 	})
 	rec.mx.Unlock()
 	return nil
