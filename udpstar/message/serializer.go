@@ -35,6 +35,11 @@ func (s *Serializer) PutCategory(v Category) {
 	s.buf = s.buf[1:]
 }
 
+func (s *Serializer) PutToken(v Token) {
+	binary.LittleEndian.PutUint32(s.buf[:4], uint32(v))
+	s.buf = s.buf[4:]
+}
+
 func (s *Serializer) Put8(v uint8) {
 	s.buf[0] = v
 	s.buf = s.buf[1:]
@@ -163,6 +168,11 @@ func (s *Deserializer) CheckCategory(category Category) bool {
 	ok := Category(s.buf[0]) == category
 	s.buf = s.buf[1:]
 	return ok
+}
+
+func (s *Deserializer) GetToken(v *Token) {
+	*v = Token(binary.LittleEndian.Uint32(s.buf[:4]))
+	s.buf = s.buf[4:]
 }
 
 func (s *Deserializer) Get8(v *uint8) {

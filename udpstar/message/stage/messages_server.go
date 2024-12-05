@@ -2,32 +2,59 @@
 
 package stage
 
-import "github.com/marko-gacesa/udpstar/udpstar/message"
+import (
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"time"
+)
 
-type SessionCast struct {
-	StageToken  message.Token
-	Name        string
-	Author      string
-	Description string
+type Setup struct {
+	StageToken message.Token
+	Name       string
+	Slots      []Slot
 }
 
-var _ interface {
-	message.Getter
-	message.Putter
-} = (*SessionCast)(nil)
+type Slot struct {
+	StoryToken   message.Token
+	Availability SlotAvailability
+	Name         string
+	Latency      time.Duration
+}
 
-func (m *SessionCast) Put(buf []byte) int {
+var _ Message = (*Setup)(nil)
+
+func (m *Setup) Size() int {
+	size := message.SizeOfPrefix +
+		1 + // category
+		message.SizeOfToken +
+		1 + len(m.Name) +
+		1 // len slots
+
+	for i := range m.Slots {
+		size += message.SizeOfToken + 1 + 1 + len(m.Slots[i].Name) + 8
+	}
+
+	return size
+}
+
+func (m *Setup) Put(buf []byte) int {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStage)
-	s.Put(&m.StageToken)
+	s.PutToken(m.StageToken)
 	s.PutStr(m.Name)
-	s.PutStr(m.Author)
-	s.PutStr(m.Description)
+
+	s.Put8(byte(len(m.Slots)))
+	for i := range m.Slots {
+		s.PutToken(m.Slots[i].StoryToken)
+		s.Put8(byte(m.Slots[i].Availability))
+		s.PutStr(m.Slots[i].Name)
+		s.PutDuration(m.Slots[i].Latency)
+	}
+
 	return s.Len()
 }
 
-func (m *SessionCast) Get(buf []byte) int {
+func (m *Setup) Get(buf []byte) int {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix(); !ok {
 		return 0
@@ -35,9 +62,21 @@ func (m *SessionCast) Get(buf []byte) int {
 	if ok := s.CheckCategory(CategoryStage); !ok {
 		return 0
 	}
-	s.Get(&m.StageToken)
+	s.GetToken(&m.StageToken)
 	s.GetStr(&m.Name)
-	s.GetStr(&m.Author)
-	s.GetStr(&m.Description)
+
+	var l byte
+	s.Get8(&l)
+	m.Slots = make([]Slot, l)
+	for i := byte(0); i < l; i++ {
+		s.GetToken(&m.Slots[i].StoryToken)
+		s.Get8((*byte)(&m.Slots[i].Availability))
+		s.GetStr(&m.Slots[i].Name)
+		s.GetDuration(&m.Slots[i].Latency)
+	}
+
 	return s.Len()
 }
+
+func (m *Setup) GetStageToken() message.Token  { return m.StageToken }
+func (m *Setup) SetStageToken(t message.Token) { m.StageToken = t }

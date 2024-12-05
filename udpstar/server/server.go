@@ -171,11 +171,9 @@ func (s *Server) multicastStage(ctx context.Context) error {
 		case <-ticker.C:
 			s.mx.Lock()
 			for token, entry := range s.stageMap {
-				msg := stagemessage.SessionCast{
-					StageToken:  token,
-					Name:        entry.name,
-					Author:      entry.author,
-					Description: entry.description,
+				msg := stagemessage.Setup{
+					StageToken: token,
+					Name:       entry.name,
 				}
 
 				size := msg.Put(buffer[:])

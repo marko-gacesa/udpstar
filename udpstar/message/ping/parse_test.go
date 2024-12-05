@@ -13,9 +13,15 @@ func TestSerializePing(t *testing.T) {
 		ClientTime: time.Now(),
 	}
 
-	var buf [1024]byte
+	var buf [SizeOfPing]byte
 
 	size := msg.Put(buf[:])
+
+	if size != SizeOfPing {
+		t.Error("size mismatch")
+		return
+	}
+
 	msgClone, ok := ParsePing(buf[:size])
 
 	if !ok {
@@ -28,14 +34,20 @@ func TestSerializePing(t *testing.T) {
 	}
 }
 
-func TestServerSerialize(t *testing.T) {
+func TestSerializePong(t *testing.T) {
 	msg := Pong{
 		MessageID:  66,
 		ClientTime: time.Now(),
 	}
 
-	var buf [1024]byte
+	var buf [SizeOfPong]byte
 	size := msg.Put(buf[:])
+
+	if size != SizeOfPong {
+		t.Error("size mismatch")
+		return
+	}
+
 	msgClone, ok := ParsePong(buf[:size])
 
 	if !ok {

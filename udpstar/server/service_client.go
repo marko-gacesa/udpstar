@@ -120,12 +120,11 @@ func (c *clientService) Start(ctx context.Context) error {
 				size := msg.Put(buffer[:])
 				err := c.udpSender.Send(buffer[:size], c.data.Address)
 				if err != nil {
-					c.log.With(
-						"addr", c.data.Address.String(),
+					c.log.Error("failed to send message to client",
+						"addr", c.data.Address,
 						"type", msg.Type().String(),
 						"size", size,
-						"client", c.Token,
-					).Error("failed to send message to client")
+						"client", c.Token)
 				}
 			}()
 		}
