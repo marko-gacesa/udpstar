@@ -7,10 +7,9 @@ import (
 	"errors"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
-	stagemessage "github.com/marko-gacesa/udpstar/udpstar/message/stage"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
 	"sync"
@@ -27,10 +26,8 @@ type Server struct {
 	mx         sync.Mutex
 	clientMap  map[message.Token]*clientService
 	sessionMap map[message.Token]sessionEntry
-	sessionWG  sync.WaitGroup
-
-	multicastAddress net.UDPAddr
-	stageMap         map[message.Token]stageEntry
+	lobbyMap   map[message.Token]lobbyEntry
+	servicesWG sync.WaitGroup
 
 	log *slog.Logger
 }
@@ -40,10 +37,9 @@ type sessionEntry struct {
 	cancelFn context.CancelFunc
 }
 
-type stageEntry struct {
-	name        string
-	author      string
-	description string
+type lobbyEntry struct {
+	srv      *lobbyService
+	cancelFn context.CancelFunc
 }
 
 func NewServer(sender Sender, opts ...func(*Server)) *Server {
@@ -52,7 +48,7 @@ func NewServer(sender Sender, opts ...func(*Server)) *Server {
 		mx:         sync.Mutex{},
 		clientMap:  make(map[message.Token]*clientService),
 		sessionMap: make(map[message.Token]sessionEntry),
-		stageMap:   make(map[message.Token]stageEntry),
+		lobbyMap:   make(map[message.Token]lobbyEntry),
 		log:        slog.Default(),
 	}
 
@@ -71,39 +67,32 @@ var WithLogger = func(log *slog.Logger) func(*Server) {
 	}
 }
 
-var WithMulticastAddress = func(addr net.UDPAddr) func(*Server) {
-	return func(s *Server) {
-		s.multicastAddress = addr
-	}
-}
-
+// Start starts the server. It's a blocking call. To stop the server cancel the provided context.
 func (s *Server) Start(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
+	<-ctx.Done()
 
-	g.Go(func() error {
-		return s.latencyReportSender(ctx)
-	})
-
-	if !s.multicastAddress.IP.IsUnspecified() {
-		g.Go(func() error {
-			return s.multicastStage(ctx)
-		})
-	}
-
-	err := g.Wait()
+	s.mx.Lock()
 
 	for sessionToken, entry := range s.sessionMap {
 		s.log.Debug("aborting session...",
-			"session", sessionToken.String())
+			"session", sessionToken)
 		entry.cancelFn()
 	}
 
-	s.sessionWG.Wait()
+	for lobbyToken, entry := range s.lobbyMap {
+		s.log.Debug("aborting lobby...",
+			"lobby", lobbyToken)
+		entry.cancelFn()
+	}
 
-	return err
+	s.mx.Unlock()
+
+	s.servicesWG.Wait()
+
+	return nil
 }
 
-func (s *Server) HandleIncomingMessages(ctx context.Context, data []byte, addr net.UDPAddr) []byte {
+func (s *Server) HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte {
 	if len(data) == 0 {
 		s.log.Debug("server received empty message",
 			"addr", addr)
@@ -117,8 +106,10 @@ func (s *Server) HandleIncomingMessages(ctx context.Context, data []byte, addr n
 			"addr", addr,
 			"messageID", msgPing.MessageID)
 		responseBuffer = s.handlePingMessage(&msgPing)
-	} else if msg := storymessage.ParseClient(data); msg != nil {
-		responseBuffer = s.handleStoryMessage(ctx, msg, addr)
+	} else if msgStory := storymessage.ParseClient(data); msgStory != nil {
+		responseBuffer = s.handleStoryMessage(msgStory, addr)
+	} else if msgLobbyJoin, ok := lobbymessage.ParseJoin(data); ok {
+		responseBuffer = s.handleLobbyJoin(&msgLobbyJoin, addr)
 	} else {
 		s.log.Warn("received unrecognized message",
 			"addr", addr)
@@ -127,105 +118,54 @@ func (s *Server) HandleIncomingMessages(ctx context.Context, data []byte, addr n
 	return responseBuffer
 }
 
-func (s *Server) latencyReportSender(ctx context.Context) error {
-	ticker := time.NewTicker(3 * time.Second)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-
-		case <-ticker.C:
-			s.log.Info("sending latency report to all sessions")
-
-			s.mx.Lock()
-			for _, entry := range s.sessionMap {
-				session := entry.srv
-
-				msgLatencyReport := session.UpdateState(ctx)
-				if msgLatencyReport == nil {
-					continue
-				}
-
-				for _, client := range session.clients {
-					client.Send(ctx, msgLatencyReport)
-				}
-			}
-			s.mx.Unlock()
-		}
-	}
-}
-
-func (s *Server) multicastStage(ctx context.Context) error {
-	var buffer [1024]byte
-
-	ticker := time.NewTicker(3700 * time.Millisecond)
-	defer ticker.Stop()
-
-	for {
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-
-		case <-ticker.C:
-			s.mx.Lock()
-			for token, entry := range s.stageMap {
-				msg := stagemessage.Setup{
-					StageToken: token,
-					Name:       entry.name,
-				}
-
-				size := msg.Put(buffer[:])
-
-				err := s.sender.Send(buffer[:size], s.multicastAddress)
-				if err != nil {
-					s.log.Error("failed to multicast",
-						"stage", token,
-						"err", err.Error())
-				}
-			}
-			s.mx.Unlock()
-		}
-	}
-}
-
-func (s *Server) StartStage(token message.Token, name, author, description string) error {
+// StartLobby starts lobby. A gathering area for the actors before the session starts.
+// To cancel the lobby, cancel the provided context.
+func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
-	if _, ok := s.stageMap[token]; ok {
-		return ErrDuplicateSession
+	if _, ok := s.lobbyMap[lobbySetup.Token]; ok {
+		return ErrDuplicateLobby
 	}
 
-	s.stageMap[token] = stageEntry{
-		name:        name,
-		author:      author,
-		description: description,
-	}
-
-	return nil
-}
-
-func (s *Server) StopStage(token message.Token) error {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-
-	if _, ok := s.stageMap[token]; !ok {
-		return ErrUnknownSession
-	}
-
-	delete(s.stageMap, token)
-
-	return nil
-}
-
-func (s *Server) StartSession(session *Session, controller controller.Controller) error {
-	sessionSrv, err := newSessionService(session, s.sender, controller, s.log)
+	lobbySrv, err := newLobbyService(lobbySetup, s.sender, s.log)
 	if err != nil {
 		return err
 	}
 
+	ctx, cancelFn := context.WithCancel(ctx)
+
+	s.lobbyMap[lobbySetup.Token] = lobbyEntry{
+		srv:      lobbySrv,
+		cancelFn: cancelFn,
+	}
+
+	s.servicesWG.Add(1)
+	go func() {
+		defer s.servicesWG.Done()
+
+		err := lobbySrv.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			s.log.Info("lobby stopped",
+				"lobby", lobbySrv.Token)
+		} else {
+			s.log.Error("lobby aborted",
+				"lobby", lobbySrv.Token,
+				"err", err.Error())
+		}
+
+		cancelFn()
+
+		s.mx.Lock()
+		defer s.mx.Unlock()
+
+		delete(s.lobbyMap, lobbySrv.Token)
+	}()
+
+	return nil
+}
+
+func (s *Server) StartSession(ctx context.Context, session *Session, controller controller.Controller) error {
 	var ok bool
 
 	s.mx.Lock()
@@ -242,7 +182,12 @@ func (s *Server) StartSession(session *Session, controller controller.Controller
 		return ErrDuplicateSession
 	}
 
-	ctx, cancelFn := context.WithCancel(context.Background())
+	sessionSrv, err := newSessionService(session, s.sender, controller, s.log)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancelFn := context.WithCancel(ctx)
 
 	for i := range session.Clients {
 		s.clientMap[session.Clients[i].Token] = sessionSrv.clients[i]
@@ -253,9 +198,9 @@ func (s *Server) StartSession(session *Session, controller controller.Controller
 		cancelFn: cancelFn,
 	}
 
-	s.sessionWG.Add(1)
+	s.servicesWG.Add(1)
 	go func() {
-		defer s.sessionWG.Done()
+		defer s.servicesWG.Done()
 
 		err := sessionSrv.Start(ctx)
 		if err == nil || errors.Is(err, context.Canceled) {
@@ -266,29 +211,18 @@ func (s *Server) StartSession(session *Session, controller controller.Controller
 				"session", session.Token,
 				"err", err.Error())
 		}
+
+		cancelFn()
+
+		s.mx.Lock()
+		defer s.mx.Unlock()
+
+		for i := range sessionSrv.clients {
+			delete(s.clientMap, sessionSrv.clients[i].Token)
+		}
+
+		delete(s.sessionMap, sessionSrv.Token)
 	}()
-
-	return nil
-}
-
-func (s *Server) StopSession(sessionToken message.Token) error {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-
-	entry, ok := s.sessionMap[sessionToken]
-
-	if !ok {
-		return ErrUnknownSession
-	}
-
-	sessionSrv := entry.srv
-	entry.cancelFn()
-
-	for i := range sessionSrv.clients {
-		delete(s.clientMap, sessionSrv.clients[i].Token)
-	}
-
-	delete(s.sessionMap, sessionToken)
 
 	return nil
 }
@@ -304,7 +238,7 @@ func (s *Server) handlePingMessage(msgPing *pingmessage.Ping) []byte {
 	return responseBuffer
 }
 
-func (s *Server) handleStoryMessage(ctx context.Context, msg storymessage.ClientMessage, addr net.UDPAddr) []byte {
+func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDPAddr) []byte {
 	msgType := msg.Type()
 	clientToken := msg.GetClientToken()
 
@@ -322,7 +256,7 @@ func (s *Server) handleStoryMessage(ctx context.Context, msg storymessage.Client
 	now := time.Now()
 
 	// update client's address and latency
-	client.UpdateState(ctx, clientData{
+	client.UpdateState(clientData{
 		LastMsgReceived: now,
 		Address:         addr,
 		Latency:         msg.GetLatency(),
@@ -348,7 +282,7 @@ func (s *Server) handleStoryMessage(ctx context.Context, msg storymessage.Client
 			"session", sessionToken,
 			"actor", msgActionPack.ActorToken)
 
-		msgActionConfirm, err := client.HandleActionPack(ctx, msgActionPack)
+		msgActionConfirm, err := client.HandleActionPack(msgActionPack)
 		if err != nil {
 			s.log.Warn("failed to handle action pack",
 				"addr", addr,
@@ -371,7 +305,7 @@ func (s *Server) handleStoryMessage(ctx context.Context, msg storymessage.Client
 			"session", sessionToken,
 			"story", msgStoryConfirm.StoryToken)
 
-		msgStoryPack, err := client.Session.HandleStoryConfirm(ctx, client, msgStoryConfirm)
+		msgStoryPack, err := client.Session.HandleStoryConfirm(client, msgStoryConfirm)
 		if err != nil {
 			s.log.Error("failed to handle confirm story",
 				"addr", addr,
@@ -391,6 +325,25 @@ func (s *Server) handleStoryMessage(ctx context.Context, msg storymessage.Client
 		msgStoryPack.Put(responseBuffer)
 		return responseBuffer
 	}
+
+	return nil
+}
+
+func (s *Server) handleLobbyJoin(msg *lobbymessage.Join, addr net.UDPAddr) []byte {
+	lobbyToken := msg.LobbyToken
+
+	s.mx.Lock()
+	lobby, ok := s.lobbyMap[lobbyToken]
+	s.mx.Unlock()
+	if !ok {
+		s.log.Warn("unknown staging area",
+			"addr", addr,
+			"staging_area", lobbyToken,
+			"client", msg.ClientToken)
+		return nil
+	}
+
+	lobby.srv.HandleJoin(msg)
 
 	return nil
 }

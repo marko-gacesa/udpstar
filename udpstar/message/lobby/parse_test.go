@@ -1,6 +1,6 @@
 // Copyright (c) 2024 by Marko Gaćeša
 
-package stage
+package lobby
 
 import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
@@ -11,7 +11,7 @@ import (
 
 func TestSerializeJoin(t *testing.T) {
 	msg := Join{
-		StageToken:  message.RandomToken(),
+		LobbyToken:  message.RandomToken(),
 		ClientToken: message.RandomToken(),
 		ActorToken:  message.RandomToken(),
 		Action:      ActionLeave,
@@ -44,7 +44,7 @@ func TestSerializeSetup(t *testing.T) {
 	story1 := message.RandomToken()
 	story2 := message.RandomToken()
 	msg := Setup{
-		StageToken: message.RandomToken(),
+		LobbyToken: message.RandomToken(),
 		Name:       "marko",
 		Slots: []Slot{
 			{

@@ -14,6 +14,7 @@ type pingService struct {
 	pings   [pingDimension]pingInfo
 	pongCh  chan pingmessage.Pong
 	pingCh  chan<- pingmessage.Ping
+	doneCh  chan struct{}
 }
 
 type pingInfo struct {
@@ -37,6 +38,7 @@ func newPingService(pingCh chan<- pingmessage.Ping) pingService {
 		pings:   [pingDimension]pingInfo{},
 		pongCh:  make(chan pingmessage.Pong),
 		pingCh:  pingCh,
+		doneCh:  make(chan struct{}),
 	}
 }
 
@@ -49,6 +51,8 @@ func (s *pingService) Start(ctx context.Context) error {
 
 	ticker := time.NewTicker(pingPeriod)
 	defer ticker.Stop()
+
+	defer close(s.doneCh)
 
 	for {
 		select {
@@ -119,9 +123,9 @@ func (s *pingService) Start(ctx context.Context) error {
 	}
 }
 
-func (s *pingService) HandlePong(ctx context.Context, msg pingmessage.Pong) {
+func (s *pingService) HandlePong(msg pingmessage.Pong) {
 	select {
-	case <-ctx.Done():
+	case <-s.doneCh:
 	case s.pongCh <- msg:
 	}
 }

@@ -1,11 +1,11 @@
 // Copyright (c) 2024 by Marko Gaćeša
 
-package stage
+package lobby
 
 import "github.com/marko-gacesa/udpstar/udpstar/message"
 
 type Join struct {
-	StageToken  message.Token
+	LobbyToken  message.Token
 	ClientToken message.Token
 	ActorToken  message.Token
 	Action      Action
@@ -26,8 +26,8 @@ func (m *Join) Size() int {
 func (m *Join) Put(buf []byte) int {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
-	s.PutCategory(CategoryStage)
-	s.PutToken(m.StageToken)
+	s.PutCategory(CategoryLobby)
+	s.PutToken(m.LobbyToken)
 	s.PutToken(m.ClientToken)
 	s.PutToken(m.ActorToken)
 	s.Put8(byte(m.Action))
@@ -40,10 +40,10 @@ func (m *Join) Get(buf []byte) int {
 	if ok := s.CheckPrefix(); !ok {
 		return 0
 	}
-	if ok := s.CheckCategory(CategoryStage); !ok {
+	if ok := s.CheckCategory(CategoryLobby); !ok {
 		return 0
 	}
-	s.GetToken(&m.StageToken)
+	s.GetToken(&m.LobbyToken)
 	s.GetToken(&m.ClientToken)
 	s.GetToken(&m.ActorToken)
 	s.Get8((*uint8)(&m.Action))
@@ -51,5 +51,5 @@ func (m *Join) Get(buf []byte) int {
 	return s.Len()
 }
 
-func (m *Join) GetStageToken() message.Token  { return m.StageToken }
-func (m *Join) SetStageToken(t message.Token) { m.StageToken = t }
+func (m *Join) GetLobbyToken() message.Token  { return m.LobbyToken }
+func (m *Join) SetLobbyToken(t message.Token) { m.LobbyToken = t }

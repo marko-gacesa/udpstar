@@ -58,7 +58,7 @@ func TestActionService_Send(t *testing.T) {
 
 		time.Sleep(100 * time.Millisecond)
 
-		actionSrv.ConfirmActions(ctx, &storymessage.ActionConfirm{
+		actionSrv.ConfirmActions(&storymessage.ActionConfirm{
 			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			ActorToken:   tokenActor,
 			LastSequence: 1,
@@ -69,7 +69,7 @@ func TestActionService_Send(t *testing.T) {
 		time.Sleep(140 * time.Millisecond)
 		// waited too long (latency is set to 100ms), the timer fired, resend recent messages: [action2]
 
-		actionSrv.ConfirmActions(ctx, &storymessage.ActionConfirm{
+		actionSrv.ConfirmActions(&storymessage.ActionConfirm{
 			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			ActorToken:   tokenActor,
 			LastSequence: 2,
@@ -153,7 +153,7 @@ func TestActionService_Missing(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		actionSrv.ConfirmActions(ctx, &storymessage.ActionConfirm{
+		actionSrv.ConfirmActions(&storymessage.ActionConfirm{
 			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			ActorToken:   1,
 			LastSequence: 0,

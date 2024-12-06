@@ -1,6 +1,6 @@
 // Copyright (c) 2024 by Marko Gaćeša
 
-package stage
+package lobby
 
 func ParseJoin(buf []byte) (Join, bool) {
 	var msg Join

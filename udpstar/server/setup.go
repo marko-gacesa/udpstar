@@ -8,6 +8,34 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
+type LobbySetup struct {
+	Token       message.Token
+	Name        string
+	SlotStories []message.Token
+}
+
+func (s *LobbySetup) Validate() error {
+	if s.Token == 0 {
+		return errors.New("token is missing for the lobby")
+	}
+
+	if s.Name == "" {
+		return errors.New("lobby is missing the name")
+	}
+
+	if len(s.SlotStories) < 2 {
+		return errors.New("too few slots")
+	}
+
+	for i := range s.SlotStories {
+		if s.SlotStories[i] == 0 {
+			return fmt.Errorf("slot %d is missing the story token", i)
+		}
+	}
+
+	return nil
+}
+
 type Session struct {
 	Token       message.Token
 	LocalActors []LocalActor

@@ -1,11 +1,11 @@
 // Copyright (c) 2024 by Marko Gaćeša
 
-package stage
+package lobby
 
 import "github.com/marko-gacesa/udpstar/udpstar/message"
 
 const (
-	CategoryStage message.Category = 2
+	CategoryLobby message.Category = 2
 )
 
 type Action byte

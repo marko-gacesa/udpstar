@@ -1,6 +1,6 @@
 // Copyright (c) 2024 by Marko Gaćeša
 
-package stage
+package lobby
 
 import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
@@ -8,7 +8,7 @@ import (
 )
 
 type Setup struct {
-	StageToken message.Token
+	LobbyToken message.Token
 	Name       string
 	Slots      []Slot
 }
@@ -39,8 +39,8 @@ func (m *Setup) Size() int {
 func (m *Setup) Put(buf []byte) int {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
-	s.PutCategory(CategoryStage)
-	s.PutToken(m.StageToken)
+	s.PutCategory(CategoryLobby)
+	s.PutToken(m.LobbyToken)
 	s.PutStr(m.Name)
 
 	s.Put8(byte(len(m.Slots)))
@@ -59,10 +59,10 @@ func (m *Setup) Get(buf []byte) int {
 	if ok := s.CheckPrefix(); !ok {
 		return 0
 	}
-	if ok := s.CheckCategory(CategoryStage); !ok {
+	if ok := s.CheckCategory(CategoryLobby); !ok {
 		return 0
 	}
-	s.GetToken(&m.StageToken)
+	s.GetToken(&m.LobbyToken)
 	s.GetStr(&m.Name)
 
 	var l byte
@@ -78,5 +78,5 @@ func (m *Setup) Get(buf []byte) int {
 	return s.Len()
 }
 
-func (m *Setup) GetStageToken() message.Token  { return m.StageToken }
-func (m *Setup) SetStageToken(t message.Token) { m.StageToken = t }
+func (m *Setup) GetLobbyToken() message.Token  { return m.LobbyToken }
+func (m *Setup) SetLobbyToken(t message.Token) { m.LobbyToken = t }

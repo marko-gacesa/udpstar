@@ -18,6 +18,7 @@ type actionService struct {
 	confirmCh    chan *storymessage.ActionConfirm
 	sendCh       chan<- storymessage.ClientMessage
 	latency      latencyGetter
+	doneCh       chan struct{}
 	log          *slog.Logger
 }
 
@@ -37,6 +38,7 @@ func newActionService(
 		confirmCh:    make(chan *storymessage.ActionConfirm),
 		sendCh:       sendCh,
 		latency:      latency,
+		doneCh:       make(chan struct{}),
 		log:          log,
 	}
 }
@@ -53,6 +55,8 @@ func (s *actionService) Start(ctx context.Context) error {
 	})
 
 	defer s.stop()
+
+	defer close(s.doneCh)
 
 	for {
 		select {
@@ -136,9 +140,9 @@ func (s *actionService) sendActions(actor *actorAction) int {
 	return len(actions)
 }
 
-func (s *actionService) ConfirmActions(ctx context.Context, msg *storymessage.ActionConfirm) {
+func (s *actionService) ConfirmActions(msg *storymessage.ActionConfirm) {
 	select {
-	case <-ctx.Done():
+	case <-s.doneCh:
 	case s.confirmCh <- msg:
 	}
 }

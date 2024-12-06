@@ -6,6 +6,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/client"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
@@ -13,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"os"
+	"reflect"
 	"sync"
 	"testing"
 	"time"
@@ -22,10 +24,10 @@ func Test1(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	w := &Network{}
-	nodeID1, nodeListen1 := w.AddNode()
-	nodeID2, nodeListen2 := w.AddNode()
-	serverListen := w.Run()
+	w := NewNetwork()
+	node1Sender, nodeListen1 := w.AddNode()
+	node2Sender, nodeListen2 := w.AddNode()
+	serverSender, serverListen := w.Run()
 	defer w.Stop()
 
 	sessionToken := message.Token(66)
@@ -43,6 +45,13 @@ func Test1(t *testing.T) {
 	actor3InputChannel := make(chan []byte)
 	actor4InputChannel := make(chan []byte)
 
+	recActor1 := channel.NewRecorder[[]byte]()
+	recActor2 := channel.NewRecorder[[]byte]()
+	recActor3 := channel.NewRecorder[[]byte]()
+	recActor4 := channel.NewRecorder[[]byte]()
+	recStoryCli1 := channel.NewRecorder[sequence.Entry]()
+	recStoryCli2 := channel.NewRecorder[sequence.Entry]()
+
 	session := server.Session{
 		Token: sessionToken,
 		LocalActors: []server.LocalActor{
@@ -51,7 +60,7 @@ func Test1(t *testing.T) {
 					Token:   actor1Token,
 					Name:    "actor1-local",
 					Story:   server.StoryInfo{Token: storyToken},
-					Channel: showActions[[]byte](ctx, "server:actor1@local"),
+					Channel: recActor1.Record(ctx),
 				},
 				InputCh: actor1InputChannel,
 			},
@@ -64,13 +73,13 @@ func Test1(t *testing.T) {
 						Token:   actor2Token,
 						Name:    "actor2@cli1",
 						Story:   server.StoryInfo{Token: storyToken},
-						Channel: showActions[[]byte](ctx, "server:actor2@cli1"),
+						Channel: recActor2.Record(ctx),
 					},
 					{
 						Token:   actor3Token,
 						Name:    "actor3@cli1",
 						Story:   server.StoryInfo{Token: storyToken},
-						Channel: showActions[[]byte](ctx, "server:actor3@cli1"),
+						Channel: recActor3.Record(ctx),
 					},
 				},
 			},
@@ -81,7 +90,7 @@ func Test1(t *testing.T) {
 						Token:   actor4Token,
 						Name:    "actor4@cli2",
 						Story:   server.StoryInfo{Token: storyToken},
-						Channel: showActions[[]byte](ctx, "server:actor4@cli2"),
+						Channel: recActor4.Record(ctx),
 					},
 				},
 			},
@@ -100,14 +109,14 @@ func Test1(t *testing.T) {
 		ReplaceAttr: nil,
 	}))
 
-	srv := server.NewServer(w.ServerSender(), server.WithLogger(l))
-	err := srv.StartSession(&session, nil)
+	srv := server.NewServer(serverSender, server.WithLogger(l))
+	err := srv.StartSession(ctx, &session, nil)
 	if err != nil {
 		t.Errorf("failed to start server session: %s", err.Error())
 		return
 	}
 
-	cli1, err := client.New(w.ClientSender(nodeID1), client.Session{
+	cli1, err := client.New(node1Sender, client.Session{
 		Token:       sessionToken,
 		ClientToken: client1Token,
 		Actors: []client.Actor{
@@ -125,7 +134,7 @@ func Test1(t *testing.T) {
 		Stories: []client.Story{
 			{
 				StoryInfo: client.StoryInfo{Token: storyToken},
-				Channel:   showActions[sequence.Entry](ctx, "client1:story"),
+				Channel:   recStoryCli1.Record(ctx),
 			},
 		},
 	}, client.WithLogger(l))
@@ -134,7 +143,7 @@ func Test1(t *testing.T) {
 		return
 	}
 
-	cli2, err := client.New(w.ClientSender(nodeID2), client.Session{
+	cli2, err := client.New(node2Sender, client.Session{
 		Token:       sessionToken,
 		ClientToken: client2Token,
 		Actors: []client.Actor{
@@ -147,7 +156,7 @@ func Test1(t *testing.T) {
 		Stories: []client.Story{
 			{
 				StoryInfo: client.StoryInfo{Token: storyToken},
-				Channel:   showActions[sequence.Entry](ctx, "client2:story"),
+				Channel:   recStoryCli2.Record(ctx),
 			},
 		},
 	}, client.WithLogger(l))
@@ -163,64 +172,122 @@ func Test1(t *testing.T) {
 	go func() {
 		for data := range nodeListen1 {
 			//fmt.Printf("NODE1: %v\n", data)
-			cli1.HandleIncomingMessages(ctx, data)
+			cli1.HandleIncomingMessages(data)
 		}
 	}()
 
 	go func() {
 		for data := range nodeListen2 {
 			//fmt.Printf("NODE2: %v\n", data)
-			cli2.HandleIncomingMessages(ctx, data)
+			cli2.HandleIncomingMessages(data)
 		}
 	}()
 
 	go func() {
 		for msg := range serverListen {
 			//fmt.Printf("SERVER RECEIVED MESSAGE FROM %s: %x\n", msg.addr.IP, msg.payload)
-			response := srv.HandleIncomingMessages(ctx, msg.payload, msg.addr)
+			response := srv.HandleIncomingMessages(msg.payload, msg.addr)
 			if len(response) > 0 {
-				w.ServerSendIP(msg.addr.IP, response)
+				w.ServerSendIP(response, msg.addr.IP)
 			}
 		}
 	}()
 
-	time.Sleep(100 * time.Millisecond)
+	pause := time.Millisecond
+
+	time.Sleep(pause)
 
 	storyChannel <- []byte{98}
 	storyChannel <- []byte{99}
 
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(pause)
 
 	actor4InputChannel <- []byte{27}
 	storyChannel <- []byte{100}
 
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(pause)
 
 	actor1InputChannel <- []byte{72}
 	storyChannel <- []byte{101}
 
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(pause)
 
 	actor2InputChannel <- []byte{68}
 	storyChannel <- []byte{102}
 
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(pause)
 
+	actor2InputChannel <- []byte{68}
 	storyChannel <- []byte{103}
 
-	time.Sleep(2000 * time.Millisecond)
+	time.Sleep(pause)
+
+	cancel()
+
+	time.Sleep(pause)
+
+	if want, got := [][]byte{{72}}, recActor1.Recording(); !reflect.DeepEqual(want, got) {
+		t.Errorf("actor1 recording mismatch: want=%v got=%v", want, got)
+	}
+	if want, got := [][]byte{{68}, {68}}, recActor2.Recording(); !reflect.DeepEqual(want, got) {
+		t.Errorf("actor2 recording mismatch: want=%v got=%v", want, got)
+	}
+	if want, got := [][]byte(nil), recActor3.Recording(); !reflect.DeepEqual(want, got) {
+		t.Errorf("actor3 recording mismatch: want=%v got=%v", want, got)
+	}
+	if want, got := [][]byte{{27}}, recActor4.Recording(); !reflect.DeepEqual(want, got) {
+		t.Errorf("actor4 recording mismatch: want=%v got=%v", want, got)
+	}
+
+	recordingStoryCli1 := recStoryCli1.Recording()
+	recordingStoryCli2 := recStoryCli2.Recording()
+
+	t.Log(recordingStoryCli1)
+	t.Log(recordingStoryCli2)
+
+	for i := range recordingStoryCli1 {
+		recordingStoryCli1[i].Delay = 0
+	}
+	for i := range recordingStoryCli2 {
+		recordingStoryCli2[i].Delay = 0
+	}
+
+	want := []sequence.Entry{
+		{Seq: 1, Payload: []byte{98}},
+		{Seq: 2, Payload: []byte{99}},
+		{Seq: 3, Payload: []byte{100}},
+		{Seq: 4, Payload: []byte{101}},
+		{Seq: 5, Payload: []byte{102}},
+		{Seq: 6, Payload: []byte{103}},
+	}
+
+	if !reflect.DeepEqual(want, recordingStoryCli1) {
+		t.Errorf("cli1 story recording mismatch: want=%v got=%v", want, recordingStoryCli1)
+	}
+
+	if !reflect.DeepEqual(want, recordingStoryCli2) {
+		t.Errorf("cli2 story recording mismatch: want=%v got=%v", want, recordingStoryCli2)
+	}
 }
 
 // Network simulates network layer.
+
+func NewNetwork() *Network {
+	return &Network{
+		chServerIn:  make(chan packetFromClient),
+		clientNodes: sync.Map{}, // net.IP.String() -> chan []byte (addr->chIn)
+	}
+}
+
 type Network struct {
 	chServerIn  chan packetFromClient
-	clientNodes []*node
+	nodeCount   int
+	clientNodes sync.Map
 	wgDone      sync.WaitGroup
-	mx          sync.Mutex
 }
 
 type packetFromClient struct {
-	node    *node
+	addr    net.IP
 	payload []byte
 }
 
@@ -229,14 +296,14 @@ type packetServer struct {
 	payload []byte
 }
 
-type node struct {
-	addr net.IP
-	chIn chan []byte
-}
-
-func (w *Network) Run() <-chan packetServer {
-	w.chServerIn = make(chan packetFromClient)
+func (w *Network) Run() (server.Sender, <-chan packetServer) {
 	chServerOut := make(chan packetServer)
+
+	w.clientNodes.Range(func(key, value any) bool {
+		addr := key.(string)
+		fmt.Printf("Registered network node: %s\n", addr)
+		return true
+	})
 
 	w.wgDone.Add(1)
 	go func() {
@@ -245,39 +312,34 @@ func (w *Network) Run() <-chan packetServer {
 
 		for pack := range w.chServerIn {
 			chServerOut <- packetServer{
-				addr:    net.UDPAddr{IP: pack.node.addr, Port: 101},
+				addr:    net.UDPAddr{IP: pack.addr, Port: 101},
 				payload: pack.payload,
 			}
 		}
-
-		fmt.Printf("SERVER LISTENER STOPPED\n")
 	}()
 
-	return chServerOut
+	return w, chServerOut
 }
 
 func (w *Network) Stop() {
-	w.mx.Lock()
-	for _, n := range w.clientNodes {
-		close(n.chIn)
-	}
+	w.clientNodes.Range(func(key, value any) bool {
+		chIn := value.(chan []byte)
+		close(chIn)
+		return true
+	})
 	close(w.chServerIn)
-	w.mx.Unlock()
 
 	w.wgDone.Wait()
 }
 
-func (w *Network) AddNode() (int, <-chan []byte) {
+func (w *Network) AddNode() (client.Sender, <-chan []byte) {
 	chIn := make(chan []byte)
 	chOut := make(chan []byte)
 
-	clientID := len(w.clientNodes)
-	n := &node{
-		addr: net.IP{192, 168, 0, byte(clientID + 1)},
-		chIn: chIn,
-	}
+	w.nodeCount++
+	addr := net.IP{192, 168, 0, byte(w.nodeCount)}
 
-	w.clientNodes = append(w.clientNodes, n)
+	w.clientNodes.Store(addr.String(), chIn)
 
 	w.wgDone.Add(1)
 	go func() {
@@ -287,89 +349,39 @@ func (w *Network) AddNode() (int, <-chan []byte) {
 		for data := range chIn {
 			chOut <- data
 		}
-
-		fmt.Printf("CLIENT ID=%d IP=%s LISTENER STOPPED\n", clientID, n.addr)
 	}()
 
-	return clientID, chOut
+	return clientSender{
+		addr:       addr,
+		chServerIn: w.chServerIn,
+	}, chOut
 }
 
-// ServerSend is used to send message from the client with ID=clientID to the server.
-func (w *Network) ClientSend(clientID int, data []byte) {
-	w.mx.Lock()
-	defer w.mx.Unlock()
-
-	w.chServerIn <- packetFromClient{
-		node:    w.clientNodes[clientID],
-		payload: bytes.Clone(data),
+func (w *Network) ServerSendIP(data []byte, ip net.IP) {
+	value, ok := w.clientNodes.Load(ip.String())
+	if !ok {
+		fmt.Printf("NODE NOT FOUND: %v\n", ip.String())
+		return
 	}
+
+	chIn := value.(chan []byte)
+	chIn <- bytes.Clone(data)
 }
 
-// ServerSend is used to send message from the server to the client with ID=clientID.
-func (w *Network) ServerSend(clientID int, data []byte) {
-	w.mx.Lock()
-	defer w.mx.Unlock()
-
-	w.clientNodes[clientID-1].chIn <- bytes.Clone(data)
-}
-
-// ServerSend is used to send message from the server to the client with the provided IP
-func (w *Network) ServerSendIP(ip net.IP, data []byte) {
-	w.mx.Lock()
-	defer w.mx.Unlock()
-
-	for _, n := range w.clientNodes {
-		if n.addr.Equal(ip) {
-			n.chIn <- bytes.Clone(data)
-		}
-	}
-}
-
-type serverSender struct {
-	w *Network
-}
-
-func (s serverSender) Send(bytes []byte, addr net.UDPAddr) error {
-	for idx, n := range s.w.clientNodes {
-		if n.addr.Equal(addr.IP) {
-			s.w.ServerSend(idx+1, bytes)
-			return nil
-		}
-	}
-	return fmt.Errorf("failed to send to %s", addr.IP)
-}
-
-func (w *Network) ServerSender() server.Sender {
-	return serverSender{w: w}
-}
-
-type clientSender struct {
-	clientID int
-	w        *Network
-}
-
-func (s clientSender) Send(bytes []byte) error {
-	s.w.ClientSend(s.clientID, bytes)
+func (w *Network) Send(data []byte, addr net.UDPAddr) error {
+	w.ServerSendIP(data, addr.IP)
 	return nil
 }
 
-func (w *Network) ClientSender(clientID int) client.Sender {
-	return clientSender{clientID: clientID, w: w}
+type clientSender struct {
+	addr       net.IP
+	chServerIn chan<- packetFromClient
 }
 
-func showActions[T any](ctx context.Context, name string) chan<- T {
-	ch := make(chan T)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case data := <-ch:
-				fmt.Printf("%q data received: %+v\n", name, data)
-			}
-		}
-	}()
-
-	return ch
+func (s clientSender) Send(data []byte) error {
+	s.chServerIn <- packetFromClient{
+		addr:    s.addr,
+		payload: bytes.Clone(data),
+	}
+	return nil
 }

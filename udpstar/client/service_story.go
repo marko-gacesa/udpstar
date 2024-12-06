@@ -16,9 +16,10 @@ import (
 )
 
 type storyService struct {
-	storyStreams []storyStream
+	storyStreams []*storyStream
 	receiveCh    chan *storymessage.StoryPack
 	sendCh       chan<- storymessage.ClientMessage
+	doneCh       chan struct{}
 	log          *slog.Logger
 }
 
@@ -27,7 +28,7 @@ func newStoryService(
 	sendCh chan<- storymessage.ClientMessage,
 	log *slog.Logger,
 ) storyService {
-	storyStreams := make([]storyStream, len(stories))
+	storyStreams := make([]*storyStream, len(stories))
 	for i := range stories {
 		storyStreams[i] = newStoryStream(stories[i])
 	}
@@ -36,6 +37,7 @@ func newStoryService(
 		storyStreams: storyStreams,
 		receiveCh:    make(chan *storymessage.StoryPack),
 		sendCh:       sendCh,
+		doneCh:       make(chan struct{}),
 		log:          log,
 	}
 }
@@ -43,11 +45,13 @@ func newStoryService(
 func (s *storyService) Start(ctx context.Context) error {
 	const requestDelay = time.Second
 
-	requestTimer := channel.JoinSlicePtr(s.storyStreams, func(story *storyStream) <-chan time.Time {
+	requestTimer := channel.JoinSlice(s.storyStreams, func(story *storyStream) <-chan time.Time {
 		return story.request.C
 	})
 
 	defer s.stop()
+
+	defer close(s.doneCh)
 
 	for {
 		select {
@@ -59,7 +63,7 @@ func (s *storyService) Start(ctx context.Context) error {
 				return errors.New("request timer channel closed")
 			}
 
-			story := &s.storyStreams[timeData.ID]
+			story := s.storyStreams[timeData.ID]
 
 			lastSeq := story.stream.Sequence()
 			s.sendConfirm(story.story.Token, lastSeq, &story.missing)
@@ -68,7 +72,7 @@ func (s *storyService) Start(ctx context.Context) error {
 			var story *storyStream
 			for i := range s.storyStreams {
 				if s.storyStreams[i].story.Token == msg.StoryToken {
-					story = &s.storyStreams[i]
+					story = s.storyStreams[i]
 					break
 				}
 			}
@@ -94,9 +98,9 @@ func (s *storyService) Start(ctx context.Context) error {
 	}
 }
 
-func (s *storyService) HandlePack(ctx context.Context, msg *storymessage.StoryPack) {
+func (s *storyService) HandlePack(msg *storymessage.StoryPack) {
 	select {
-	case <-ctx.Done():
+	case <-s.doneCh:
 	case s.receiveCh <- msg:
 	}
 }
@@ -149,8 +153,8 @@ type storyStream struct {
 	quality atomic.Uint64
 }
 
-func newStoryStream(story Story) storyStream {
-	s := storyStream{
+func newStoryStream(story Story) *storyStream {
+	s := &storyStream{
 		story:   story,
 		stream:  sequence.NewStream(),
 		missing: sequence.RangeSet{},

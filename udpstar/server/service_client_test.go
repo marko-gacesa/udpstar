@@ -135,13 +135,14 @@ func TestClientService_HandleActionPack(t *testing.T) {
 	action3 := sequence.Entry{Seq: 3, Delay: 0, Payload: []byte("Z")}
 
 	g.Go(func() error {
-		statePack := client1Srv.GetState(ctx)
+		time.Sleep(100 * time.Millisecond)
+		statePack := client1Srv.GetState()
 
 		if statePack.State != storymessage.ClientStateLost {
 			t.Errorf("unexpected client state: %s", statePack.State)
 		}
 
-		client1Srv.UpdateState(ctx, clientData{
+		client1Srv.UpdateState(clientData{
 			LastMsgReceived: time.Now(),
 			Address: net.UDPAddr{
 				IP:   []byte{127, 0, 0, 1},
@@ -150,7 +151,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 			Latency: 10 * time.Millisecond,
 		})
 
-		statePack = client1Srv.GetState(ctx)
+		statePack = client1Srv.GetState()
 
 		if statePack.State != storymessage.ClientStateGood {
 			t.Errorf("unexpected client state: %s", statePack.State)
@@ -161,7 +162,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		}
 
 		// client1 service received action3 request from the remote actor 1.
-		msg, err := client1Srv.HandleActionPack(ctx, &storymessage.ActionPack{
+		msg, err := client1Srv.HandleActionPack(&storymessage.ActionPack{
 			HeaderClient: storymessage.HeaderClient{ClientToken: tokenClient1, Latency: 1},
 			ActorToken:   tokenActor1,
 			Actions:      []sequence.Entry{action3},
@@ -178,7 +179,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// client1 service received action2 request from the remote actor 1.
-		msg, err = client1Srv.HandleActionPack(ctx, &storymessage.ActionPack{
+		msg, err = client1Srv.HandleActionPack(&storymessage.ActionPack{
 			HeaderClient: storymessage.HeaderClient{ClientToken: tokenClient1, Latency: 1},
 			ActorToken:   tokenActor1,
 			Actions:      []sequence.Entry{action2},
@@ -195,7 +196,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		// client1 service received action1 request from the remote actor 1.
-		msg, err = client1Srv.HandleActionPack(ctx, &storymessage.ActionPack{
+		msg, err = client1Srv.HandleActionPack(&storymessage.ActionPack{
 			HeaderClient: storymessage.HeaderClient{ClientToken: tokenClient1, Latency: 1},
 			ActorToken:   tokenClient1,
 			Actions:      []sequence.Entry{action1},

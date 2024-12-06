@@ -62,7 +62,7 @@ func TestStoryService_HandlePack(t *testing.T) {
 	storyEntry3 := sequence.Entry{Seq: 3, Delay: 10 * time.Millisecond, Payload: []byte("Z")}
 
 	g.Go(func() error {
-		storySrv.HandlePack(ctx, &storymessage.StoryPack{
+		storySrv.HandlePack(&storymessage.StoryPack{
 			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			StoryToken:   tokenStory,
 			Stories:      []sequence.Entry{storyEntry2},
@@ -72,7 +72,7 @@ func TestStoryService_HandlePack(t *testing.T) {
 		time.Sleep(1200 * time.Millisecond)
 		// waited too long (latency is set to 1000ms), the timer fired, resend story confirm: latest=0 missing=[1]
 
-		storySrv.HandlePack(ctx, &storymessage.StoryPack{
+		storySrv.HandlePack(&storymessage.StoryPack{
 			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			StoryToken:   tokenStory,
 			Stories:      []sequence.Entry{storyEntry1, storyEntry2},
@@ -81,7 +81,7 @@ func TestStoryService_HandlePack(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		storySrv.HandlePack(ctx, &storymessage.StoryPack{
+		storySrv.HandlePack(&storymessage.StoryPack{
 			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			StoryToken:   tokenStory,
 			Stories:      []sequence.Entry{storyEntry1, storyEntry2, storyEntry3},

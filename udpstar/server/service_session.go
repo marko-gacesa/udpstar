@@ -4,7 +4,6 @@ package server
 
 import (
 	"context"
-	"errors"
 	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
@@ -12,6 +11,7 @@ import (
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
+	"time"
 )
 
 type SessionState byte
@@ -43,7 +43,8 @@ type sessionService struct {
 	controller controller.Controller
 	log        *slog.Logger
 
-	state SessionState
+	state  SessionState
+	doneCh <-chan struct{}
 }
 
 type storyGetPackage struct {
@@ -99,6 +100,8 @@ func (s *sessionService) Start(ctx context.Context) error {
 
 	g, ctxGroup := errgroup.WithContext(ctx)
 
+	s.doneCh = ctxGroup.Done()
+
 	for i := range s.clients {
 		client := s.clients[i]
 		g.Go(func() error {
@@ -122,11 +125,26 @@ func (s *sessionService) start(ctx context.Context) error {
 		return actor.InputCh
 	}))
 
+	ticker := time.NewTicker(3 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
-		case <-ctx.Done():
+		case <-s.doneCh:
 			s.state = SessionStateDone
 			return ctx.Err()
+
+		case <-ticker.C:
+			msgLatencyReport := s.updateState(ctx)
+			if msgLatencyReport == nil {
+				continue
+			}
+
+			s.log.Debug("sending latency report to clients")
+
+			for _, client := range s.clients {
+				client.Send(msgLatencyReport)
+			}
 
 		case storyEntryData := <-storyEntryCh:
 			story := &s.stories[storyEntryData.ID]
@@ -148,7 +166,7 @@ func (s *sessionService) start(ctx context.Context) error {
 				"count", len(recentEntries))
 
 			for i := range s.clients {
-				s.clients[i].Send(ctx, msg)
+				s.clients[i].Send(msg)
 			}
 
 		case storyReq := <-s.storyGetCh:
@@ -194,20 +212,24 @@ func (s *sessionService) start(ctx context.Context) error {
 
 		case actorActionData, ok := <-localActorActionCh:
 			if !ok {
-				return errors.New("local actor action channel closed")
+				continue
 			}
 
 			actor := &s.localActors[actorActionData.ID]
 
 			action := actorActionData.Data
-			actor.Channel <- action
+
+			select {
+			case <-s.doneCh:
+			case actor.Channel <- action:
+			}
 		}
 	}
 }
 
 func (s *sessionService) HandleStoryConfirm(
-	ctx context.Context,
-	client *clientService, msg *storymessage.StoryConfirm,
+	client *clientService,
+	msg *storymessage.StoryConfirm,
 ) (*storymessage.StoryPack, error) {
 	var story *storyData
 	for i := range s.stories {
@@ -227,14 +249,14 @@ func (s *sessionService) HandleStoryConfirm(
 	ch := make(chan storymessage.StoryPack)
 
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-s.doneCh:
+		return nil, nil
 	case s.storyGetCh <- storyGetPackage{story: story, missing: msg.Missing, responseCh: ch}:
 	}
 
 	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
+	case <-s.doneCh:
+		return nil, nil
 	case msgStoryPack, ok := <-ch:
 		if !ok {
 			return nil, nil
@@ -242,7 +264,7 @@ func (s *sessionService) HandleStoryConfirm(
 
 		go func() {
 			for msgStoryPack := range ch {
-				client.Send(ctx, &msgStoryPack)
+				client.Send(&msgStoryPack)
 			}
 		}()
 
@@ -250,7 +272,7 @@ func (s *sessionService) HandleStoryConfirm(
 	}
 }
 
-func (s *sessionService) UpdateState(ctx context.Context) *storymessage.LatencyReport {
+func (s *sessionService) updateState(ctx context.Context) *storymessage.LatencyReport {
 	if s.state == SessionStateNew || s.state == SessionStateDone {
 		return nil
 	}
@@ -273,7 +295,7 @@ func (s *sessionService) UpdateState(ctx context.Context) *storymessage.LatencyR
 	newState := SessionStateActive
 
 	for _, c := range s.clients {
-		state := c.GetState(ctx)
+		state := c.GetState()
 
 		for _, actor := range c.remoteActors {
 			msg.Latencies = append(msg.Latencies, storymessage.LatencyReportActor{

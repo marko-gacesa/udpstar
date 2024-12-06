@@ -91,10 +91,11 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 		latency := 10 * time.Millisecond
 
 		// set IP addresses of clients... nothing can be sent without this
-		client1Srv.UpdateState(ctx, clientData{
+		time.Sleep(100 * time.Millisecond)
+		client1Srv.UpdateState(clientData{
 			LastMsgReceived: time.Now(), Address: client1Addr, Latency: latency,
 		})
-		client2Srv.UpdateState(ctx, clientData{
+		client2Srv.UpdateState(clientData{
 			LastMsgReceived: time.Now(), Address: client2Addr, Latency: latency,
 		})
 
@@ -112,7 +113,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 		msgStoryConfirm = &storymessage.StoryConfirm{StoryToken: tokenStory, LastSequence: 3, Missing: nil}
 		msgStoryConfirm.SetLatency(latency)
 		msgStoryConfirm.SetClientToken(tokenClient1)
-		msgStoryPack, err = sessionSrv.HandleStoryConfirm(ctx, client1Srv, msgStoryConfirm)
+		msgStoryPack, err = sessionSrv.HandleStoryConfirm(client1Srv, msgStoryConfirm)
 		if err != nil {
 			t.Errorf("HandleStoryConfirm: got error: %s", err.Error())
 			return errStop
@@ -129,7 +130,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 		}
 		msgStoryConfirm.SetLatency(latency)
 		msgStoryConfirm.SetClientToken(tokenClient2)
-		msgStoryPack, err = sessionSrv.HandleStoryConfirm(ctx, client2Srv, msgStoryConfirm)
+		msgStoryPack, err = sessionSrv.HandleStoryConfirm(client2Srv, msgStoryConfirm)
 		if err != nil {
 			t.Errorf("HandleStoryConfirm: got error: %s", err.Error())
 			return errStop

@@ -131,6 +131,8 @@ func (c *Client) Start(ctx context.Context) error {
 
 	err := g.Wait()
 
+	// Wait for ping, action and story services to finish and then close pingCh and sendCh
+	// because these services put messages to the channels.
 	close(c.pingCh)
 	close(c.sendCh)
 
@@ -144,7 +146,7 @@ func (c *Client) Start(ctx context.Context) error {
 	return err
 }
 
-func (c *Client) HandleIncomingMessages(ctx context.Context, data []byte) {
+func (c *Client) HandleIncomingMessages(data []byte) {
 	defer util.Recover(c.log)
 
 	if len(data) == 0 {
@@ -155,7 +157,7 @@ func (c *Client) HandleIncomingMessages(ctx context.Context, data []byte) {
 	if msgPong, ok := pingmessage.ParsePong(data); ok {
 		c.log.Debug("received pong",
 			"messageID", msgPong.MessageID)
-		c.pingSrv.HandlePong(ctx, msgPong)
+		c.pingSrv.HandlePong(msgPong)
 		return
 	}
 
@@ -167,14 +169,14 @@ func (c *Client) HandleIncomingMessages(ctx context.Context, data []byte) {
 			return
 		}
 
-		c.handleStoryMessage(ctx, msg)
+		c.handleStoryMessage(msg)
 		return
 	}
 
 	c.log.Warn("received unrecognized message")
 }
 
-func (c *Client) handleStoryMessage(ctx context.Context, msg storymessage.ServerMessage) {
+func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 	msgType := msg.Type()
 	switch msgType {
 	case storymessage.TypeTest:
@@ -187,14 +189,14 @@ func (c *Client) handleStoryMessage(ctx context.Context, msg storymessage.Server
 		c.log.Debug("received action",
 			"session", msgActionConfirm.SessionToken,
 			"actor", msgActionConfirm.ActorToken)
-		c.actionSrv.ConfirmActions(ctx, msgActionConfirm)
+		c.actionSrv.ConfirmActions(msgActionConfirm)
 
 	case storymessage.TypeStory:
 		msgStoryPack := msg.(*storymessage.StoryPack)
 		c.log.Debug("client received story pack",
 			"session", msgStoryPack.SessionToken,
 			"story", msgStoryPack.StoryToken)
-		c.storySrv.HandlePack(ctx, msgStoryPack)
+		c.storySrv.HandlePack(msgStoryPack)
 
 	case storymessage.TypeLatencyReport:
 		msgLatencyRep := msg.(*storymessage.LatencyReport)

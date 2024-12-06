@@ -20,7 +20,9 @@ func (m mockConnection) Send([]byte, net.UDPAddr) error {
 func TestServer(t *testing.T) {
 	server := NewServer(mockConnection{})
 
-	g, ctx := errgroup.WithContext(context.Background())
+	ctx, cancelCtx := context.WithCancel(context.Background())
+
+	g, ctx := errgroup.WithContext(ctx)
 
 	g.Go(func() error {
 		return server.Start(ctx)
@@ -31,24 +33,31 @@ func TestServer(t *testing.T) {
 
 		var err error
 
+		ctx1, cancelCtx1 := context.WithCancel(ctx)
+		defer cancelCtx1()
+
 		session1 := newSimpleSession(1, 2, 3, 4)
-		err = server.StartSession(session1, nil)
+		err = server.StartSession(ctx1, session1, nil)
 		if err != nil {
 			t.Errorf("failed to start session 1")
 		}
 
+		ctx2, cancelCtx2 := context.WithCancel(ctx)
+		defer cancelCtx2()
+
 		session2 := newSimpleSession(5, 6, 7, 8)
-		err = server.StartSession(session2, nil)
+		err = server.StartSession(ctx2, session2, nil)
 		if err != nil {
 			t.Errorf("failed to start session 2")
 		}
 
 		time.Sleep(100 * time.Millisecond)
 
-		err = server.StopSession(1)
-		if err != nil {
-			t.Errorf("failed to stop session 1")
-		}
+		cancelCtx1()
+
+		time.Sleep(100 * time.Millisecond)
+
+		cancelCtx()
 
 		return errStop
 	})

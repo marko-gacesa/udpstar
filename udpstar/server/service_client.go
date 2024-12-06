@@ -11,6 +11,7 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"net"
+	"sync"
 	"time"
 )
 
@@ -22,14 +23,14 @@ type clientService struct {
 
 	remoteActors []remoteActorData
 
-	sendCh       chan storymessage.ServerMessage
-	dataUpdateCh chan clientData
-	dataGetCh    chan chan<- clientStatePackage
+	sendCh chan storymessage.ServerMessage
+	doneCh chan struct{}
 
 	udpSender Sender
 	log       *slog.Logger
 
-	state storymessage.ClientState
+	state   storymessage.ClientState
+	stateMx sync.Mutex
 }
 
 type clientData struct {
@@ -62,8 +63,7 @@ func newClientService(
 	}
 
 	c.sendCh = make(chan storymessage.ServerMessage)
-	c.dataUpdateCh = make(chan clientData)
-	c.dataGetCh = make(chan chan<- clientStatePackage)
+	c.doneCh = make(chan struct{})
 
 	c.udpSender = udpSender
 	c.log = log
@@ -72,56 +72,48 @@ func newClientService(
 }
 
 func (c *clientService) Start(ctx context.Context) error {
-	if c.state != storymessage.ClientStateNew {
-		return ErrAlreadyStarted
-	}
+	if err := func() error {
+		c.stateMx.Lock()
+		defer c.stateMx.Unlock()
 
-	c.state = storymessage.ClientStateLost
+		if c.state != storymessage.ClientStateNew {
+			return ErrAlreadyStarted
+		}
+
+		c.state = storymessage.ClientStateLost
+
+		return nil
+	}(); err != nil {
+		return err
+	}
 
 	const bufferSize = 4 << 10
 	var buffer [bufferSize]byte
 
+	defer close(c.doneCh)
+
 	for {
 		select {
 		case <-ctx.Done():
+			c.stateMx.Lock()
 			c.state = storymessage.ClientStateLost
+			c.stateMx.Unlock()
+
 			return ctx.Err()
 
-		case c.data = <-c.dataUpdateCh:
-			if c.data.Latency > 50*time.Millisecond {
-				c.state = storymessage.ClientStateLagging
-			} else {
-				c.state = storymessage.ClientStateGood
-			}
-
-		case ch := <-c.dataGetCh:
-			if !c.data.LastMsgReceived.IsZero() {
-				dur := time.Since(c.data.LastMsgReceived)
-				if dur > 3*time.Second {
-					c.state = storymessage.ClientStateLost
-				} else if dur > 500*time.Millisecond {
-					c.state = storymessage.ClientStateLagging
-				}
-			}
-
-			ch <- clientStatePackage{
-				State:   c.state,
-				Latency: c.data.Latency,
-			}
-
 		case msg := <-c.sendCh:
-			if c.state == storymessage.ClientStateNew || c.data.Address.Port == 0 || len(c.data.Address.IP) == 0 {
-				continue
-			}
+			c.stateMx.Lock()
+			addr := c.data.Address
+			c.stateMx.Unlock()
 
 			func() {
 				defer util.Recover(c.log)
 
 				size := msg.Put(buffer[:])
-				err := c.udpSender.Send(buffer[:size], c.data.Address)
+				err := c.udpSender.Send(buffer[:size], addr)
 				if err != nil {
 					c.log.Error("failed to send message to client",
-						"addr", c.data.Address,
+						"addr", addr,
 						"type", msg.Type().String(),
 						"size", size,
 						"client", c.Token)
@@ -131,41 +123,52 @@ func (c *clientService) Start(ctx context.Context) error {
 	}
 }
 
-func (c *clientService) Send(ctx context.Context, msg storymessage.ServerMessage) {
+func (c *clientService) Send(msg storymessage.ServerMessage) {
+	if isNew := func() bool {
+		c.stateMx.Lock()
+		defer c.stateMx.Unlock()
+		return c.state == storymessage.ClientStateNew || c.data.Address.Port == 0 || len(c.data.Address.IP) == 0
+	}(); isNew {
+		return
+	}
+
 	select {
-	case <-ctx.Done():
+	case <-c.doneCh:
 	case c.sendCh <- msg:
 	}
 }
 
-func (c *clientService) UpdateState(ctx context.Context, msgInfo clientData) {
-	select {
-	case <-ctx.Done():
-	case c.dataUpdateCh <- msgInfo:
+func (c *clientService) UpdateState(msgInfo clientData) {
+	c.stateMx.Lock()
+
+	c.data = msgInfo
+
+	if c.data.Latency > 50*time.Millisecond {
+		c.state = storymessage.ClientStateLagging
+	} else {
+		c.state = storymessage.ClientStateGood
 	}
+
+	c.stateMx.Unlock()
 }
 
-func (c *clientService) GetState(ctx context.Context) clientStatePackage {
-	ch := make(chan clientStatePackage, 1)
-	defer close(ch)
+func (c *clientService) GetState() clientStatePackage {
+	c.stateMx.Lock()
+	defer c.stateMx.Unlock()
 
-	select {
-	case <-ctx.Done():
-		return clientStatePackage{}
-	case c.dataGetCh <- ch:
-		select {
-		case <-ctx.Done():
-			return clientStatePackage{}
-		case pack := <-ch:
-			return pack
+	if !c.data.LastMsgReceived.IsZero() {
+		dur := time.Since(c.data.LastMsgReceived)
+		if dur > 3*time.Second {
+			c.state = storymessage.ClientStateLost
+		} else if dur > 500*time.Millisecond {
+			c.state = storymessage.ClientStateLagging
 		}
 	}
+
+	return clientStatePackage{State: c.state, Latency: c.data.Latency}
 }
 
-func (c *clientService) HandleActionPack(
-	ctx context.Context,
-	msgActionPack *storymessage.ActionPack,
-) (storymessage.ActionConfirm, error) {
+func (c *clientService) HandleActionPack(msgActionPack *storymessage.ActionPack) (storymessage.ActionConfirm, error) {
 	var actor *remoteActorData
 	for i := range c.remoteActors {
 		if c.remoteActors[i].Token == msgActionPack.ActorToken {
@@ -181,9 +184,9 @@ func (c *clientService) HandleActionPack(
 
 	for i := range actions {
 		select {
-		case <-ctx.Done():
-			return storymessage.ActionConfirm{}, ctx.Err()
-		case actor.Channel <- actions[i].Payload:
+		case <-c.doneCh:
+			return storymessage.ActionConfirm{}, nil
+		case actor.Channel <- actions[i].Payload: // Write to external channel
 		}
 	}
 
