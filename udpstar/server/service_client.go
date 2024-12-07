@@ -103,8 +103,13 @@ func (c *clientService) Start(ctx context.Context) error {
 
 		case msg := <-c.sendCh:
 			c.stateMx.Lock()
+			state := c.state
 			addr := c.data.Address
 			c.stateMx.Unlock()
+
+			if isNew := state == storymessage.ClientStateNew || addr.Port == 0 || len(addr.IP) == 0; isNew {
+				continue
+			}
 
 			func() {
 				defer util.Recover(c.log)
@@ -124,14 +129,6 @@ func (c *clientService) Start(ctx context.Context) error {
 }
 
 func (c *clientService) Send(msg storymessage.ServerMessage) {
-	if isNew := func() bool {
-		c.stateMx.Lock()
-		defer c.stateMx.Unlock()
-		return c.state == storymessage.ClientStateNew || c.data.Address.Port == 0 || len(c.data.Address.IP) == 0
-	}(); isNew {
-		return
-	}
-
 	select {
 	case <-c.doneCh:
 	case c.sendCh <- msg:

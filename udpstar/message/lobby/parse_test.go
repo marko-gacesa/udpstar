@@ -4,39 +4,51 @@ package lobby
 
 import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"math/rand"
 	"reflect"
 	"testing"
 	"time"
 )
 
-func TestSerializeJoin(t *testing.T) {
-	msg := Join{
-		LobbyToken:  message.RandomToken(),
-		ClientToken: message.RandomToken(),
-		ActorToken:  message.RandomToken(),
-		Action:      ActionLeave,
-		Name:        "marko",
+var r = rand.New(rand.NewSource(time.Now().UnixNano()))
+
+func TestParseClient(t *testing.T) {
+	tests := []ClientMessage{
+		&Join{
+			HeaderClient: HeaderClient{
+				LobbyToken:  message.RandomToken(),
+				ClientToken: message.RandomToken(),
+				ActorToken:  message.RandomToken(),
+				Latency:     r.Uint32(),
+			},
+			Slot: byte(r.Intn(8)),
+			Name: "blah-blah",
+		},
+		&Leave{
+			HeaderClient: HeaderClient{
+				LobbyToken:  message.RandomToken(),
+				ClientToken: message.RandomToken(),
+				ActorToken:  message.RandomToken(),
+				Latency:     r.Uint32(),
+			},
+		},
 	}
 
-	sizeWant := msg.Size()
-	buf := make([]byte, sizeWant)
+	var buf [1024]byte
+	for _, msg := range tests {
+		t.Run(msg.Command().String(), func(t *testing.T) {
+			size := msg.Put(buf[:])
 
-	size := msg.Put(buf)
+			if msg.Size() != size {
+				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
+			}
 
-	if size != sizeWant {
-		t.Error("size mismatch")
-		return
-	}
+			msgClone := ParseClient(buf[:size])
 
-	msgClone, ok := ParseJoin(buf)
-
-	if !ok {
-		t.Error("failed parse")
-		return
-	}
-
-	if msg != msgClone {
-		t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
+			if !reflect.DeepEqual(msg, msgClone) {
+				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
+			}
+		})
 	}
 }
 
@@ -44,8 +56,10 @@ func TestSerializeSetup(t *testing.T) {
 	story1 := message.RandomToken()
 	story2 := message.RandomToken()
 	msg := Setup{
-		LobbyToken: message.RandomToken(),
-		Name:       "marko",
+		HeaderServer: HeaderServer{
+			LobbyToken: message.RandomToken(),
+		},
+		Name: "marko",
 		Slots: []Slot{
 			{
 				StoryToken:   story1,
@@ -68,7 +82,7 @@ func TestSerializeSetup(t *testing.T) {
 			{
 				StoryToken:   story2,
 				Availability: SlotRemote,
-				Name:         "test1",
+				Name:         "test4",
 				Latency:      23 * time.Millisecond,
 			},
 			{
@@ -79,9 +93,9 @@ func TestSerializeSetup(t *testing.T) {
 			},
 			{
 				StoryToken:   story2,
-				Availability: SlotUnavailable,
-				Name:         "?",
-				Latency:      time.Microsecond,
+				Availability: SlotRemote,
+				Name:         "test6",
+				Latency:      17 * time.Microsecond,
 			},
 		},
 	}

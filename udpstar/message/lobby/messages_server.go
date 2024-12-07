@@ -7,10 +7,14 @@ import (
 	"time"
 )
 
+const sizeServerBase = message.SizeOfPrefix +
+	1 + // category
+	sizeOfHeaderServer
+
 type Setup struct {
-	LobbyToken message.Token
-	Name       string
-	Slots      []Slot
+	HeaderServer
+	Name  string
+	Slots []Slot
 }
 
 type Slot struct {
@@ -20,12 +24,10 @@ type Slot struct {
 	Latency      time.Duration
 }
 
-var _ Message = (*Setup)(nil)
+var _ ServerMessage = (*Setup)(nil)
 
 func (m *Setup) Size() int {
-	size := message.SizeOfPrefix +
-		1 + // category
-		message.SizeOfToken +
+	size := sizeServerBase +
 		1 + len(m.Name) +
 		1 // len slots
 
@@ -40,7 +42,7 @@ func (m *Setup) Put(buf []byte) int {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryLobby)
-	s.PutToken(m.LobbyToken)
+	s.Put(&m.HeaderServer)
 	s.PutStr(m.Name)
 
 	s.Put8(byte(len(m.Slots)))
@@ -56,13 +58,10 @@ func (m *Setup) Put(buf []byte) int {
 
 func (m *Setup) Get(buf []byte) int {
 	s := message.NewDeserializer(buf)
-	if ok := s.CheckPrefix(); !ok {
+	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby); !ok {
 		return 0
 	}
-	if ok := s.CheckCategory(CategoryLobby); !ok {
-		return 0
-	}
-	s.GetToken(&m.LobbyToken)
+	s.Get(&m.HeaderServer)
 	s.GetStr(&m.Name)
 
 	var l byte
@@ -77,6 +76,3 @@ func (m *Setup) Get(buf []byte) int {
 
 	return s.Len()
 }
-
-func (m *Setup) GetLobbyToken() message.Token  { return m.LobbyToken }
-func (m *Setup) SetLobbyToken(t message.Token) { m.LobbyToken = t }

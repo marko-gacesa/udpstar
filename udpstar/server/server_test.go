@@ -29,7 +29,7 @@ func TestServer(t *testing.T) {
 	})
 
 	g.Go(func() error {
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 
 		var err error
 
@@ -51,11 +51,11 @@ func TestServer(t *testing.T) {
 			t.Errorf("failed to start session 2")
 		}
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 
 		cancelCtx1()
 
-		time.Sleep(100 * time.Millisecond)
+		time.Sleep(10 * time.Millisecond)
 
 		cancelCtx()
 

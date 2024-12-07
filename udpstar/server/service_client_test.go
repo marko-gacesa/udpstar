@@ -5,6 +5,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
@@ -37,25 +38,14 @@ func (rec *udpRecorder) Send(bytes []byte, addr net.UDPAddr) error {
 	return nil
 }
 
-type channelRecorder [][]byte
-
-func (rec *channelRecorder) Record(ctx context.Context, ch <-chan []byte) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case data := <-ch:
-			*rec = append(*rec, data)
-		}
-	}
-}
-
 var errStop = errors.New("STOP")
 
 func TestClientService_HandleActionPack(t *testing.T) {
-	actor1Ch := make(chan []byte)
-	actor2Ch := make(chan []byte)
-	storyCh := make(chan []byte)
+	actor1Rec := channel.NewRecorder[[]byte]()
+	actor2Rec := channel.NewRecorder[[]byte]()
+
+	ctx, cancelCtx := context.WithCancel(context.Background())
+	defer cancelCtx()
 
 	const (
 		tokenSession = 1
@@ -77,7 +67,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 						Token:   tokenActor1,
 						Name:    "marko",
 						Story:   StoryInfo{Token: tokenStory},
-						Channel: actor1Ch,
+						Channel: actor1Rec.Record(ctx),
 					},
 				},
 			},
@@ -88,7 +78,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 						Token:   tokenActor2,
 						Name:    "ogi",
 						Story:   StoryInfo{Token: tokenStory},
-						Channel: actor2Ch,
+						Channel: actor2Rec.Record(ctx),
 					},
 				},
 			},
@@ -96,7 +86,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		Stories: []Story{
 			{
 				StoryInfo: StoryInfo{Token: tokenStory},
-				Channel:   storyCh,
+				Channel:   make(chan []byte), // nothing will be written to the story channel
 			},
 		},
 	}
@@ -111,20 +101,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 
 	client1Srv := sessionSrv.clients[0]
 
-	var actor1Rec channelRecorder
-	var actor2Rec channelRecorder
-
 	g, ctx := errgroup.WithContext(context.Background())
-
-	g.Go(func() error {
-		actor1Rec.Record(ctx, actor1Ch)
-		return nil
-	})
-
-	g.Go(func() error {
-		actor2Rec.Record(ctx, actor2Ch)
-		return nil
-	})
 
 	g.Go(func() error {
 		return sessionSrv.Start(ctx)
@@ -216,13 +193,15 @@ func TestClientService_HandleActionPack(t *testing.T) {
 
 	g.Wait()
 
+	cancelCtx()
+
 	// actor1 should get the actions in the correct order
-	if !reflect.DeepEqual([][]byte(actor1Rec), [][]byte{action1.Payload, action2.Payload, action3.Payload}) {
+	if !reflect.DeepEqual(actor1Rec.Recording(), [][]byte{action1.Payload, action2.Payload, action3.Payload}) {
 		t.Errorf("actor1Rec: got=%v", actor1Rec)
 	}
 
 	// actor2 shouldn't get any actions
-	if len(actor2Rec) != 0 {
+	if len(actor2Rec.Recording()) != 0 {
 		t.Errorf("actor2Rec: got=%v", actor2Rec)
 	}
 

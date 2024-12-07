@@ -4,6 +4,7 @@ package lobby
 
 import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"time"
 )
 
 type Message interface {
@@ -12,4 +13,19 @@ type Message interface {
 	message.Sizer
 	GetLobbyToken() message.Token
 	SetLobbyToken(message.Token)
+}
+
+type ClientMessage interface {
+	Message
+	Command() Command
+	GetClientToken() message.Token
+	SetClientToken(message.Token)
+	GetActorToken() message.Token
+	SetActorToken(message.Token)
+	GetLatency() time.Duration
+	SetLatency(time.Duration)
+}
+
+type ServerMessage interface {
+	Message
 }

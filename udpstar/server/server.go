@@ -21,7 +21,8 @@ type Sender interface {
 }
 
 type Server struct {
-	sender Sender
+	sender        Sender
+	broadcastAddr net.UDPAddr
 
 	mx         sync.Mutex
 	clientMap  map[message.Token]*clientService
@@ -67,6 +68,12 @@ var WithLogger = func(log *slog.Logger) func(*Server) {
 	}
 }
 
+var WithBroadcastAddress = func(addr net.UDPAddr) func(*Server) {
+	return func(s *Server) {
+		s.broadcastAddr = addr
+	}
+}
+
 // Start starts the server. It's a blocking call. To stop the server cancel the provided context.
 func (s *Server) Start(ctx context.Context) error {
 	<-ctx.Done()
@@ -108,8 +115,8 @@ func (s *Server) HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte {
 		responseBuffer = s.handlePingMessage(&msgPing)
 	} else if msgStory := storymessage.ParseClient(data); msgStory != nil {
 		responseBuffer = s.handleStoryMessage(msgStory, addr)
-	} else if msgLobbyJoin, ok := lobbymessage.ParseJoin(data); ok {
-		responseBuffer = s.handleLobbyJoin(&msgLobbyJoin, addr)
+	} else if msgLobby := lobbymessage.ParseClient(data); msgLobby != nil {
+		s.handleLobby(msgLobby, addr)
 	} else {
 		s.log.Warn("received unrecognized message",
 			"addr", addr)
@@ -128,7 +135,11 @@ func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
 		return ErrDuplicateLobby
 	}
 
-	lobbySrv, err := newLobbyService(lobbySetup, s.sender, s.log)
+	if _, ok := s.sessionMap[lobbySetup.Token]; ok {
+		return ErrDuplicateLobby
+	}
+
+	lobbySrv, err := newLobbyService(lobbySetup, s.broadcastAddr, s.sender, s.log)
 	if err != nil {
 		return err
 	}
@@ -170,6 +181,11 @@ func (s *Server) StartSession(ctx context.Context, session *Session, controller 
 
 	s.mx.Lock()
 	defer s.mx.Unlock()
+
+	_, ok = s.lobbyMap[session.Token]
+	if ok {
+		return ErrDuplicateSession
+	}
 
 	for i := range session.Clients {
 		_, ok = s.clientMap[session.Clients[i].Token]
@@ -329,8 +345,8 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 	return nil
 }
 
-func (s *Server) handleLobbyJoin(msg *lobbymessage.Join, addr net.UDPAddr) []byte {
-	lobbyToken := msg.LobbyToken
+func (s *Server) handleLobby(msg lobbymessage.ClientMessage, addr net.UDPAddr) {
+	lobbyToken := msg.GetLobbyToken()
 
 	s.mx.Lock()
 	lobby, ok := s.lobbyMap[lobbyToken]
@@ -339,11 +355,10 @@ func (s *Server) handleLobbyJoin(msg *lobbymessage.Join, addr net.UDPAddr) []byt
 		s.log.Warn("unknown staging area",
 			"addr", addr,
 			"staging_area", lobbyToken,
-			"client", msg.ClientToken)
-		return nil
+			"client", msg.GetClientToken(),
+			"actor", msg.GetActorToken())
+		return
 	}
 
-	lobby.srv.HandleJoin(msg)
-
-	return nil
+	lobby.srv.HandleClient(msg, addr)
 }

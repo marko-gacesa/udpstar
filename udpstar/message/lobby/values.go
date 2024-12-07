@@ -19,7 +19,6 @@ type SlotAvailability byte
 
 const (
 	SlotAvailable SlotAvailability = iota
-	SlotUnavailable
 	SlotLocal
 	SlotRemote
 )

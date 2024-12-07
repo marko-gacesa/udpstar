@@ -41,7 +41,6 @@ func ParseServer(buf []byte) ServerMessage {
 	return nil
 }
 
-// ParseClient decodes ClientMessage from the data after the message.Category has already been stripped.
 func ParseClient(buf []byte) ClientMessage {
 	if len(buf) < sizeClientBase {
 		return nil

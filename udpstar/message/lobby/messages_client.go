@@ -2,54 +2,79 @@
 
 package lobby
 
-import "github.com/marko-gacesa/udpstar/udpstar/message"
+import (
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+)
+
+const sizeClientBase = message.SizeOfPrefix +
+	1 + // category
+	1 + // command
+	sizeOfHeaderClient
 
 type Join struct {
-	LobbyToken  message.Token
-	ClientToken message.Token
-	ActorToken  message.Token
-	Action      Action
-	Name        string
+	HeaderClient
+	Slot byte
+	Name string
 }
 
-var _ Message = (*Join)(nil)
+var _ ClientMessage = (*Join)(nil)
+
+func (*Join) Command() Command { return CommandJoin }
 
 func (m *Join) Size() int {
-	size := message.SizeOfPrefix +
-		1 + // category
-		3*message.SizeOfToken +
-		1 + // action
+	return sizeClientBase +
+		1 + // slot
 		1 + len(m.Name)
-	return size
 }
 
 func (m *Join) Put(buf []byte) int {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryLobby)
-	s.PutToken(m.LobbyToken)
-	s.PutToken(m.ClientToken)
-	s.PutToken(m.ActorToken)
-	s.Put8(byte(m.Action))
+	s.Put8(byte(CommandJoin))
+	s.Put(&m.HeaderClient)
+	s.Put8(m.Slot)
 	s.PutStr(m.Name)
 	return s.Len()
 }
 
 func (m *Join) Get(buf []byte) int {
 	s := message.NewDeserializer(buf)
-	if ok := s.CheckPrefix(); !ok {
+	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby) && checkCommand(&s, CommandJoin); !ok {
 		return 0
 	}
-	if ok := s.CheckCategory(CategoryLobby); !ok {
-		return 0
-	}
-	s.GetToken(&m.LobbyToken)
-	s.GetToken(&m.ClientToken)
-	s.GetToken(&m.ActorToken)
-	s.Get8((*uint8)(&m.Action))
+	s.Get(&m.HeaderClient)
+	s.Get8(&m.Slot)
 	s.GetStr(&m.Name)
 	return s.Len()
 }
 
-func (m *Join) GetLobbyToken() message.Token  { return m.LobbyToken }
-func (m *Join) SetLobbyToken(t message.Token) { m.LobbyToken = t }
+type Leave struct {
+	HeaderClient
+}
+
+var _ ClientMessage = (*Leave)(nil)
+
+func (*Leave) Command() Command { return CommandLeave }
+
+func (m *Leave) Size() int {
+	return sizeClientBase
+}
+
+func (m *Leave) Put(buf []byte) int {
+	s := message.NewSerializer(buf)
+	s.PutPrefix()
+	s.PutCategory(CategoryLobby)
+	s.Put8(byte(CommandLeave))
+	s.Put(&m.HeaderClient)
+	return s.Len()
+}
+
+func (m *Leave) Get(buf []byte) int {
+	s := message.NewDeserializer(buf)
+	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby) && checkCommand(&s, CommandLeave); !ok {
+		return 0
+	}
+	s.Get(&m.HeaderClient)
+	return s.Len()
+}
