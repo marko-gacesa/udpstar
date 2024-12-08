@@ -74,7 +74,7 @@ var WithBroadcastAddress = func(addr net.UDPAddr) func(*Server) {
 	}
 }
 
-// Start starts the server. It's a blocking call. To stop the server cancel the provided context.
+// Start starts the server. It's a blocking call. To stop the server, cancel the provided context.
 func (s *Server) Start(ctx context.Context) error {
 	<-ctx.Done()
 

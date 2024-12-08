@@ -55,11 +55,11 @@ func New(
 		opt(c)
 	}
 
+	c.log = c.log.With("session", c.sessionToken, "client", c.clientToken)
+
 	c.pingSrv = newPingService(c.pingCh)
 	c.actionSrv = newActionService(session.Actors, c.sendCh, &c.pingSrv, c.log)
 	c.storySrv = newStoryService(session.Stories, c.sendCh, c.log)
-
-	c.log = c.log.With("client", c.clientToken)
 
 	return c, nil
 }
@@ -164,7 +164,7 @@ func (c *Client) HandleIncomingMessages(data []byte) {
 	if msg := storymessage.ParseServer(data); msg != nil {
 		if msg.GetSessionToken() != c.sessionToken {
 			c.log.Warn("received message for wrong session",
-				"session", msg.GetSessionToken(),
+				"wrong_session", msg.GetSessionToken(),
 				"type", msg.Type())
 			return
 		}
@@ -187,14 +187,12 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 	case storymessage.TypeAction:
 		msgActionConfirm := msg.(*storymessage.ActionConfirm)
 		c.log.Debug("received action",
-			"session", msgActionConfirm.SessionToken,
 			"actor", msgActionConfirm.ActorToken)
 		c.actionSrv.ConfirmActions(msgActionConfirm)
 
 	case storymessage.TypeStory:
 		msgStoryPack := msg.(*storymessage.StoryPack)
 		c.log.Debug("client received story pack",
-			"session", msgStoryPack.SessionToken,
 			"story", msgStoryPack.StoryToken)
 		c.storySrv.HandlePack(msgStoryPack)
 

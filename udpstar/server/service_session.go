@@ -91,6 +91,7 @@ func newSessionService(
 	return s, nil
 }
 
+// Start starts the session service. Cancel the provided context to stop it.
 func (s *sessionService) Start(ctx context.Context) error {
 	if s.state != SessionStateNew {
 		return ErrAlreadyStarted

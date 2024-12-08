@@ -31,11 +31,14 @@ func ParseClient(buf []byte) ClientMessage {
 	return nil
 }
 
-func ParseSetup(buf []byte) (Setup, bool) {
+func ParseServer(buf []byte) ServerMessage {
 	var msg Setup
 	if len(buf) < msg.Size() {
-		return msg, false
+		return nil
 	}
-	size := msg.Get(buf)
-	return msg, size > 0
+	if msg.Get(buf) > 0 {
+		return &msg
+	}
+
+	return nil
 }

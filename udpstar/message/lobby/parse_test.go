@@ -52,72 +52,71 @@ func TestParseClient(t *testing.T) {
 	}
 }
 
-func TestSerializeSetup(t *testing.T) {
+func TestSerializeServer(t *testing.T) {
 	story1 := message.RandomToken()
 	story2 := message.RandomToken()
-	msg := Setup{
-		HeaderServer: HeaderServer{
-			LobbyToken: message.RandomToken(),
+
+	tests := []ServerMessage{
+		&Setup{
+			HeaderServer: HeaderServer{
+				LobbyToken: message.RandomToken(),
+			},
+			Name: "marko",
+			Slots: []Slot{
+				{
+					StoryToken:   story1,
+					Availability: SlotLocal,
+					Name:         "test1",
+					Latency:      0,
+				},
+				{
+					StoryToken:   story1,
+					Availability: SlotRemote,
+					Name:         "test2",
+					Latency:      17 * time.Millisecond,
+				},
+				{
+					StoryToken:   story1,
+					Availability: SlotRemote,
+					Name:         "test3",
+					Latency:      45 * time.Millisecond,
+				},
+				{
+					StoryToken:   story2,
+					Availability: SlotRemote,
+					Name:         "test4",
+					Latency:      23 * time.Millisecond,
+				},
+				{
+					StoryToken:   story2,
+					Availability: SlotAvailable,
+					Name:         "",
+					Latency:      0,
+				},
+				{
+					StoryToken:   story2,
+					Availability: SlotRemote,
+					Name:         "test6",
+					Latency:      17 * time.Microsecond,
+				},
+			},
 		},
-		Name: "marko",
-		Slots: []Slot{
-			{
-				StoryToken:   story1,
-				Availability: SlotLocal,
-				Name:         "test1",
-				Latency:      0,
-			},
-			{
-				StoryToken:   story1,
-				Availability: SlotRemote,
-				Name:         "test2",
-				Latency:      17 * time.Millisecond,
-			},
-			{
-				StoryToken:   story1,
-				Availability: SlotRemote,
-				Name:         "test3",
-				Latency:      45 * time.Millisecond,
-			},
-			{
-				StoryToken:   story2,
-				Availability: SlotRemote,
-				Name:         "test4",
-				Latency:      23 * time.Millisecond,
-			},
-			{
-				StoryToken:   story2,
-				Availability: SlotAvailable,
-				Name:         "",
-				Latency:      0,
-			},
-			{
-				StoryToken:   story2,
-				Availability: SlotRemote,
-				Name:         "test6",
-				Latency:      17 * time.Microsecond,
-			},
-		},
 	}
 
-	sizeWant := msg.Size()
+	var buf [1024]byte
+	for _, msg := range tests {
+		t.Run(reflect.TypeOf(msg).String(), func(t *testing.T) {
+			size := msg.Put(buf[:])
 
-	buf := make([]byte, sizeWant)
-	size := msg.Put(buf)
+			if msg.Size() != size {
+				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
+			}
 
-	if size != sizeWant {
-		t.Error("size mismatch")
-		return
-	}
+			msgClone := ParseServer(buf[:size])
 
-	msgClone, ok := ParseSetup(buf)
-
-	if !ok {
-		t.Error("failed parse")
-		return
-	}
-
-	if !reflect.DeepEqual(msg, msgClone) {
-		t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
+			if !reflect.DeepEqual(msg, msgClone) {
+				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
+			}
+		})
 	}
 }

@@ -66,11 +66,12 @@ func newClientService(
 	c.doneCh = make(chan struct{})
 
 	c.udpSender = udpSender
-	c.log = log
+	c.log = log.With("session", session.Token, "client", client.Token)
 
 	return c
 }
 
+// Start starts the client service. Cancel the provided context to stop it.
 func (c *clientService) Start(ctx context.Context) error {
 	if err := func() error {
 		c.stateMx.Lock()
@@ -120,14 +121,14 @@ func (c *clientService) Start(ctx context.Context) error {
 					c.log.Error("failed to send message to client",
 						"addr", addr,
 						"type", msg.Type().String(),
-						"size", size,
-						"client", c.Token)
+						"size", size)
 				}
 			}()
 		}
 	}
 }
 
+// Send sends a server message to the client.
 func (c *clientService) Send(msg storymessage.ServerMessage) {
 	select {
 	case <-c.doneCh:
