@@ -3,6 +3,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/marko-gacesa/udpstar/channel"
@@ -12,7 +13,6 @@ import (
 	"log/slog"
 	"net"
 	"reflect"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -28,10 +28,10 @@ type udpRecorder struct {
 	records []udpRecord
 }
 
-func (rec *udpRecorder) Send(bytes []byte, addr net.UDPAddr) error {
+func (rec *udpRecorder) Send(data []byte, addr net.UDPAddr) error {
 	rec.mx.Lock()
 	rec.records = append(rec.records, udpRecord{
-		Bytes: slices.Clone(bytes[:]),
+		Bytes: bytes.Clone(data[:]),
 		Addr:  addr,
 	})
 	rec.mx.Unlock()

@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -65,7 +65,7 @@ func TestSerializeServer(t *testing.T) {
 			Slots: []Slot{
 				{
 					StoryToken:   story1,
-					Availability: SlotLocal,
+					Availability: SlotLocal0,
 					Name:         "test1",
 					Latency:      0,
 				},

@@ -1,18 +1,33 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
-	"errors"
+	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"github.com/marko-gacesa/udpstar/udpstar/util"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
+	"sync"
 )
+
+// ******************************************************************************
+
+var _ interface {
+	Start(ctx context.Context)
+	HandleIncomingMessages(data []byte)
+
+	Join(actorToken message.Token, slot byte, name string)
+	Leave(actorToken message.Token)
+	LeaveAll()
+
+	Get(version int) *udpstar.Lobby
+} = (*Lobby)(nil)
+
+//******************************************************************************
 
 type Lobby struct {
 	clientToken message.Token
@@ -22,8 +37,13 @@ type Lobby struct {
 
 	pingSrv pingService
 
-	sendCh chan lobbymessage.ClientMessage
-	pingCh chan pingmessage.Ping
+	sendCh    chan lobbymessage.ClientMessage
+	pingCh    chan pingmessage.Ping
+	commandCh chan lobbyCommandProcessor
+	doneCh    chan struct{}
+
+	dataMx sync.Mutex
+	data   udpstar.Lobby
 
 	log *slog.Logger
 }
@@ -40,6 +60,8 @@ func NewLobby(
 		sender:      sender,
 		sendCh:      make(chan lobbymessage.ClientMessage),
 		pingCh:      make(chan pingmessage.Ping),
+		commandCh:   make(chan lobbyCommandProcessor),
+		doneCh:      make(chan struct{}),
 		log:         slog.Default(),
 	}
 	for _, opt := range opts {
@@ -53,8 +75,19 @@ func NewLobby(
 	return c, nil
 }
 
-func (c *Lobby) Start(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
+var WithLobbyLogger = func(log *slog.Logger) func(*Lobby) {
+	return func(c *Lobby) {
+		if log != nil {
+			c.log = log
+		}
+	}
+}
+
+func (c *Lobby) Start(ctx context.Context) {
+	go func() {
+		<-ctx.Done()
+		close(c.doneCh)
+	}()
 
 	go func() {
 		var buffer [pingmessage.SizeOfPing]byte
@@ -99,25 +132,35 @@ func (c *Lobby) Start(ctx context.Context) error {
 		}
 	}()
 
-	g.Go(func() error {
-		return c.pingSrv.Start(ctx)
-	})
+	wg := sync.WaitGroup{}
 
-	err := g.Wait()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		for {
+			select {
+			case <-c.doneCh:
+				return
+			case command := <-c.commandCh:
+				command.process(c)
+			}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.pingSrv.Start(ctx)
+	}()
+
+	wg.Wait()
 
 	// Wait for all services to finish and then close pingCh and sendCh
 	// because the services put messages to the channels.
 	close(c.pingCh)
 	close(c.sendCh)
 
-	if err == nil || errors.Is(err, context.Canceled) {
-		c.log.Info("lobby client stopped")
-	} else {
-		c.log.Error("lobby client aborted",
-			"err", err)
-	}
-
-	return err
+	c.log.Info("lobby client stopped")
 }
 
 func (c *Lobby) HandleIncomingMessages(data []byte) {
@@ -142,9 +185,121 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 			return
 		}
 
-		//c.handleLobbyMessage(msg)
+		msgSetup, ok := msg.(*lobbymessage.Setup)
+		if !ok {
+			c.log.Warn("received unrecognized message")
+		}
+
+		c.dataMx.Lock()
+		if isChanged := c.assign(msgSetup); isChanged {
+			c.data.Version++
+		}
+		c.dataMx.Unlock()
+
 		return
 	}
 
 	c.log.Warn("received unrecognized message")
+}
+
+func (c *Lobby) Join(actorToken message.Token, slot byte, name string) {
+	c.sendCommand(lobbyJoinReq{ActorToken: actorToken, Slot: slot, Name: name})
+}
+
+func (c *Lobby) Leave(actorToken message.Token) {
+	c.sendCommand(lobbyLeaveReq{ActorToken: actorToken})
+}
+
+func (c *Lobby) LeaveAll() {
+	c.sendCommand(lobbyLeaveReq{ActorToken: 0})
+}
+
+func (c *Lobby) Get(version int) *udpstar.Lobby {
+	c.dataMx.Lock()
+	defer c.dataMx.Unlock()
+
+	if version == c.data.Version {
+		return nil
+	}
+
+	result := new(udpstar.Lobby)
+	*result = c.data
+
+	return result
+}
+
+func (c *Lobby) assign(msg *lobbymessage.Setup) bool {
+	var changed bool
+	if c.data.Name != msg.Name {
+		changed = true
+		c.data.Name = msg.Name
+	}
+
+	n := len(msg.Slots)
+	if len(c.data.Slots) != n {
+		c.data.Slots = make([]udpstar.LobbySlot, n)
+		changed = true
+	}
+	for i := range msg.Slots {
+		changed = changed || c.data.Slots[i].StoryToken != msg.Slots[i].StoryToken ||
+			c.data.Slots[i].Availability != msg.Slots[i].Availability ||
+			c.data.Slots[i].Name != msg.Slots[i].Name ||
+			c.data.Slots[i].Latency != msg.Slots[i].Latency
+		c.data.Slots[i].StoryToken = msg.Slots[i].StoryToken
+		c.data.Slots[i].Availability = msg.Slots[i].Availability
+		c.data.Slots[i].Name = msg.Slots[i].Name
+		c.data.Slots[i].Latency = msg.Slots[i].Latency
+	}
+
+	return changed
+}
+
+func (c *Lobby) sendCommand(cmd lobbyCommandProcessor) {
+	select {
+	case <-c.doneCh:
+		return
+	case c.commandCh <- cmd:
+	}
+}
+
+type lobbyCommandProcessor interface {
+	process(s *Lobby)
+}
+
+type lobbyJoinReq struct {
+	ActorToken message.Token
+	Slot       byte
+	Name       string
+}
+
+func (r lobbyJoinReq) process(c *Lobby) {
+	var msg lobbymessage.Join
+	msg.SetLobbyToken(c.lobbyToken)
+	msg.SetClientToken(c.clientToken)
+	msg.SetActorToken(r.ActorToken)
+	msg.SetLatency(c.pingSrv.Latency())
+	msg.Slot = r.Slot
+	msg.Name = r.Name
+
+	select {
+	case <-c.doneCh:
+	case c.sendCh <- &msg:
+	}
+}
+
+type lobbyLeaveReq struct {
+	ActorToken message.Token
+}
+
+func (r lobbyLeaveReq) process(c *Lobby) {
+	var msg lobbymessage.Leave
+	msg.SetLobbyToken(c.lobbyToken)
+	msg.SetClientToken(c.clientToken)
+	msg.SetActorToken(r.ActorToken)
+	msg.SetLatency(c.pingSrv.Latency())
+
+	select {
+	case <-c.doneCh:
+	case c.sendCh <- &msg:
+	}
 }

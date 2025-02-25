@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2025 by Marko Gaćeša
 
 package sequence
 
@@ -214,14 +214,17 @@ func (s *Stream) pushDelay(actual, desired time.Duration) {
 }
 
 func (s *Stream) Quality() time.Duration {
+	n := len(s.delayHistory)
+	if n == 0 {
+		return 0
+	}
+
 	var total time.Duration
-	for _, d := range s.delayHistory {
-		total += d.Diff()
+	for i := 0; i < n; i++ {
+		total += s.delayHistory[i].Diff()
 	}
-	if total == 0 {
-		return total
-	}
-	return total / time.Duration(len(s.delayHistory))
+
+	return total / time.Duration(n)
 }
 
 type EntryDelay struct {

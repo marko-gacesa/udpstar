@@ -23,7 +23,7 @@ func (s *LobbySetup) Validate() error {
 		return errors.New("lobby is missing the name")
 	}
 
-	if len(s.SlotStories) < 2 {
+	if len(s.SlotStories) < 1 {
 		return errors.New("too few slots")
 	}
 

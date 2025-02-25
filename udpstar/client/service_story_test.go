@@ -1,30 +1,18 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
+	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
-
-type entryRecorder []sequence.Entry
-
-func (r *entryRecorder) Record(ctx context.Context, ch <-chan sequence.Entry) {
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case entry := <-ch:
-			*r = append(*r, entry)
-		}
-	}
-}
 
 func TestStoryService_HandlePack(t *testing.T) {
 	const (
@@ -32,36 +20,36 @@ func TestStoryService_HandlePack(t *testing.T) {
 		tokenStory   = 1
 	)
 
-	storyCh := make(chan sequence.Entry)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
+	storyRec := channel.NewRecorder[sequence.Entry]()
 	stories := []Story{
 		{
 			StoryInfo: StoryInfo{Token: tokenStory},
-			Channel:   storyCh,
+			Channel:   storyRec.Record(ctx),
 		},
 	}
 
-	msgRec := newMessageRecorder()
-	storyRec := entryRecorder{}
+	ctx, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
 
-	storySrv := newStoryService(stories, msgRec.Chan(), slog.Default())
+	msgRec := channel.NewRecorder[storymessage.ClientMessage]()
+	storySrv := newStoryService(stories, msgRec.Record(ctx), slog.Default())
 
-	g, ctx := errgroup.WithContext(context.Background())
+	wg := sync.WaitGroup{}
 
-	g.Go(func() error {
-		return storySrv.Start(ctx)
-	})
-
-	g.Go(func() error {
-		storyRec.Record(ctx, storyCh)
-		return nil
-	})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		storySrv.Start(ctx)
+	}()
 
 	storyEntry1 := sequence.Entry{Seq: 1, Delay: 0, Payload: []byte("ABC")}
 	storyEntry2 := sequence.Entry{Seq: 2, Delay: 10 * time.Millisecond, Payload: []byte("XY")}
 	storyEntry3 := sequence.Entry{Seq: 3, Delay: 10 * time.Millisecond, Payload: []byte("Z")}
 
-	g.Go(func() error {
+	go func() {
 		storySrv.HandlePack(&storymessage.StoryPack{
 			HeaderServer: storymessage.HeaderServer{SessionToken: tokenSession},
 			StoryToken:   tokenStory,
@@ -90,18 +78,22 @@ func TestStoryService_HandlePack(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		return errStop
-	})
+		cancel()
 
-	g.Wait()
+		time.Sleep(10 * time.Millisecond)
 
-	messages := msgRec.Stop()
+		cancel2()
+	}()
+
+	wg.Wait()
+
+	messages := msgRec.Recording()
 
 	compareStoryElements(t, []sequence.Entry{
 		storyEntry1,
 		storyEntry2,
 		storyEntry3,
-	}, storyRec)
+	}, storyRec.Recording())
 
 	compareMessages(t, []storymessage.ClientMessage{
 		&storymessage.StoryConfirm{

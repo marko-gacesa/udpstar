@@ -1,6 +1,6 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
-package tests_test
+package server_test
 
 import (
 	"bytes"
@@ -20,7 +20,7 @@ import (
 	"time"
 )
 
-func Test1(t *testing.T) {
+func TestSession(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -110,6 +110,7 @@ func Test1(t *testing.T) {
 	}))
 
 	srv := server.NewServer(serverSender, server.WithLogger(l))
+
 	err := srv.StartSession(ctx, &session, nil)
 	if err != nil {
 		t.Errorf("failed to start server session: %s", err.Error())
@@ -165,35 +166,46 @@ func Test1(t *testing.T) {
 		return
 	}
 
-	go srv.Start(ctx)
-	go cli1.Start(ctx)
-	go cli2.Start(ctx)
-
+	wgNodes := &sync.WaitGroup{}
+	wgNodes.Add(3)
 	go func() {
+		defer wgNodes.Done()
+		srv.Start(ctx)
+	}()
+	go func() {
+		defer wgNodes.Done()
+		cli1.Start(ctx)
+	}()
+	go func() {
+		defer wgNodes.Done()
+		cli2.Start(ctx)
+	}()
+
+	wgNet := &sync.WaitGroup{}
+	wgNet.Add(3)
+	go func() {
+		defer wgNet.Done()
 		for data := range nodeListen1 {
-			//fmt.Printf("NODE1: %v\n", data)
-			cli1.HandleIncomingMessages(data)
+			cli1.HandleIncomingMessages(bytes.Clone(data))
 		}
 	}()
-
 	go func() {
+		defer wgNet.Done()
 		for data := range nodeListen2 {
-			//fmt.Printf("NODE2: %v\n", data)
-			cli2.HandleIncomingMessages(data)
+			cli2.HandleIncomingMessages(bytes.Clone(data))
 		}
 	}()
-
 	go func() {
+		defer wgNet.Done()
 		for msg := range serverListen {
-			//fmt.Printf("SERVER RECEIVED MESSAGE FROM %s: %x\n", msg.addr.IP, msg.payload)
-			response := srv.HandleIncomingMessages(msg.payload, msg.addr)
+			response := srv.HandleIncomingMessages(bytes.Clone(msg.payload), msg.addr)
 			if len(response) > 0 {
 				w.ServerSendIP(response, msg.addr.IP)
 			}
 		}
 	}()
 
-	pause := time.Millisecond
+	const pause = time.Millisecond
 
 	time.Sleep(pause)
 
@@ -224,7 +236,11 @@ func Test1(t *testing.T) {
 
 	cancel()
 
-	time.Sleep(pause)
+	wgNodes.Wait()
+
+	w.Stop()
+
+	wgNet.Wait()
 
 	if want, got := [][]byte{{72}}, recActor1.Recording(); !reflect.DeepEqual(want, got) {
 		t.Errorf("actor1 recording mismatch: want=%v got=%v", want, got)
@@ -273,10 +289,21 @@ func Test1(t *testing.T) {
 // Network simulates network layer.
 
 func NewNetwork() *Network {
-	return &Network{
+	w := &Network{
 		chServerIn:  make(chan packetFromClient),
 		clientNodes: sync.Map{}, // net.IP.String() -> chan []byte (addr->chIn)
 	}
+
+	w.cleanupFn = sync.OnceFunc(func() {
+		w.clientNodes.Range(func(key, value any) bool {
+			chIn := value.(chan []byte)
+			close(chIn)
+			return true
+		})
+		close(w.chServerIn)
+	})
+
+	return w
 }
 
 type Network struct {
@@ -284,6 +311,7 @@ type Network struct {
 	nodeCount   int
 	clientNodes sync.Map
 	wgDone      sync.WaitGroup
+	cleanupFn   func()
 }
 
 type packetFromClient struct {
@@ -313,7 +341,7 @@ func (w *Network) Run() (server.Sender, <-chan packetServer) {
 		for pack := range w.chServerIn {
 			chServerOut <- packetServer{
 				addr:    net.UDPAddr{IP: pack.addr, Port: 101},
-				payload: pack.payload,
+				payload: bytes.Clone(pack.payload),
 			}
 		}
 	}()
@@ -322,13 +350,7 @@ func (w *Network) Run() (server.Sender, <-chan packetServer) {
 }
 
 func (w *Network) Stop() {
-	w.clientNodes.Range(func(key, value any) bool {
-		chIn := value.(chan []byte)
-		close(chIn)
-		return true
-	})
-	close(w.chServerIn)
-
+	w.cleanupFn()
 	w.wgDone.Wait()
 }
 
@@ -347,7 +369,7 @@ func (w *Network) AddNode() (client.Sender, <-chan []byte) {
 		defer close(chOut)
 
 		for data := range chIn {
-			chOut <- data
+			chOut <- bytes.Clone(data)
 		}
 	}()
 
@@ -358,6 +380,15 @@ func (w *Network) AddNode() (client.Sender, <-chan []byte) {
 }
 
 func (w *Network) ServerSendIP(data []byte, ip net.IP) {
+	if ip == nil {
+		w.clientNodes.Range(func(key, value any) bool {
+			chIn := value.(chan []byte)
+			chIn <- bytes.Clone(data)
+			return true
+		})
+		return
+	}
+
 	value, ok := w.clientNodes.Load(ip.String())
 	if !ok {
 		fmt.Printf("NODE NOT FOUND: %v\n", ip.String())

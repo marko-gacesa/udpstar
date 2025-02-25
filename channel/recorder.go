@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package channel
 
@@ -6,12 +6,12 @@ import "context"
 
 type Recorder[T any] struct {
 	data []T
-	done chan struct{}
+	done chan []T
 }
 
 func NewRecorder[T any]() Recorder[T] {
 	return Recorder[T]{
-		done: make(chan struct{}),
+		done: make(chan []T, 1),
 	}
 }
 
@@ -19,7 +19,11 @@ func (r *Recorder[T]) Record(ctx context.Context) chan<- T {
 	ch := make(chan T)
 
 	go func() {
-		defer close(r.done)
+		defer func() {
+			r.done <- r.data
+			close(r.done)
+		}()
+
 		for {
 			select {
 			case <-ctx.Done():
@@ -34,6 +38,5 @@ func (r *Recorder[T]) Record(ctx context.Context) chan<- T {
 }
 
 func (r *Recorder[T]) Recording() []T {
-	<-r.done
-	return r.data
+	return <-r.done
 }

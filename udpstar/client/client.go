@@ -1,22 +1,33 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
-	"errors"
+	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"github.com/marko-gacesa/udpstar/udpstar/util"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
+	"sync"
 	"time"
 )
 
-type Sender interface {
-	Send([]byte) error
-}
+// ******************************************************************************
+
+var _ interface {
+	Start(ctx context.Context)
+	HandleIncomingMessages(data []byte)
+
+	// Quality returns the level of consistency in message processing: Average divergence of last few
+	// messages processed time when compared to the server. Ideally should be zero.
+	Quality() time.Duration
+
+	Latencies() udpstar.LatencyInfo
+} = (*Client)(nil)
+
+//******************************************************************************
 
 type Client struct {
 	clientToken  message.Token
@@ -31,7 +42,14 @@ type Client struct {
 	sendCh chan storymessage.ClientMessage
 	pingCh chan pingmessage.Ping
 
+	latencyMx sync.Mutex
+	latencies udpstar.LatencyInfo
+
 	log *slog.Logger
+}
+
+type Sender interface {
+	Send([]byte) error
 }
 
 func New(
@@ -72,9 +90,7 @@ var WithLogger = func(log *slog.Logger) func(*Client) {
 	}
 }
 
-func (c *Client) Start(ctx context.Context) error {
-	g, ctx := errgroup.WithContext(ctx)
-
+func (c *Client) Start(ctx context.Context) {
 	go func() {
 		var buffer [pingmessage.SizeOfPing]byte
 		for ping := range c.pingCh {
@@ -117,33 +133,34 @@ func (c *Client) Start(ctx context.Context) error {
 		}
 	}()
 
-	g.Go(func() error {
-		return c.pingSrv.Start(ctx)
-	})
+	wg := sync.WaitGroup{}
 
-	g.Go(func() error {
-		return c.actionSrv.Start(ctx)
-	})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.pingSrv.Start(ctx)
+	}()
 
-	g.Go(func() error {
-		return c.storySrv.Start(ctx)
-	})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.actionSrv.Start(ctx)
+	}()
 
-	err := g.Wait()
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		c.storySrv.Start(ctx)
+	}()
+
+	wg.Wait()
 
 	// Wait for ping, action and story services to finish and then close pingCh and sendCh
 	// because these services put messages to the channels.
 	close(c.pingCh)
 	close(c.sendCh)
 
-	if err == nil || errors.Is(err, context.Canceled) {
-		c.log.Info("client stopped")
-	} else {
-		c.log.Error("client aborted",
-			"err", err)
-	}
-
-	return err
+	c.log.Info("client stopped")
 }
 
 func (c *Client) HandleIncomingMessages(data []byte) {
@@ -198,9 +215,17 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 
 	case storymessage.TypeLatencyReport:
 		msgLatencyRep := msg.(*storymessage.LatencyReport)
-
-		_ = msgLatencyRep
 		c.log.Info("received latency report")
+
+		c.latencyMx.Lock()
+		c.latencies.Version++
+		if l := len(msgLatencyRep.Latencies); l != len(c.latencies.Latencies) {
+			c.latencies.Latencies = make([]udpstar.LatencyActor, l)
+		}
+		for i := range msgLatencyRep.Latencies {
+			c.latencies.Latencies[i] = udpstar.LatencyActor(msgLatencyRep.Latencies[i])
+		}
+		c.latencyMx.Unlock()
 
 	default:
 		c.log.Warn("received message of unknown type",
@@ -210,4 +235,11 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 
 func (c *Client) Quality() time.Duration {
 	return c.storySrv.Quality()
+}
+
+func (c *Client) Latencies() udpstar.LatencyInfo {
+	c.latencyMx.Lock()
+	defer c.latencyMx.Unlock()
+
+	return c.latencies
 }

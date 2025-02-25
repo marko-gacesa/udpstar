@@ -1,10 +1,11 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package server
 
 import (
 	"context"
 	"errors"
+	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
@@ -16,9 +17,31 @@ import (
 	"time"
 )
 
-type Sender interface {
-	Send([]byte, net.UDPAddr) error
-}
+// ******************************************************************************
+
+var _ interface {
+	Start(ctx context.Context)
+	HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte
+
+	StartSession(ctx context.Context, session *Session, controller controller.Controller) error
+
+	StartLobby(ctx context.Context, lobbySetup *LobbySetup) error
+	UpgradeLobby(
+		ctx context.Context,
+		lobbyToken message.Token,
+		attachChannels func(session *Session),
+		controller controller.Controller,
+	) error
+
+	GetLobby(lobbyToken message.Token, version int) (udpstar.Lobby, error)
+
+	JoinLocal(lobbyToken, actorToken message.Token, slotIdx, localIdx byte, name string) error
+	LeaveLocal(lobbyToken, actorToken message.Token) error
+	RenameLobby(lobbyToken message.Token, name string) error
+	Evict(lobbyToken, actorToken message.Token) error
+} = (*Server)(nil)
+
+//******************************************************************************
 
 type Server struct {
 	sender        Sender
@@ -31,6 +54,10 @@ type Server struct {
 	servicesWG sync.WaitGroup
 
 	log *slog.Logger
+}
+
+type Sender interface {
+	Send([]byte, net.UDPAddr) error
 }
 
 type sessionEntry struct {
@@ -75,7 +102,7 @@ var WithBroadcastAddress = func(addr net.UDPAddr) func(*Server) {
 }
 
 // Start starts the server. It's a blocking call. To stop the server, cancel the provided context.
-func (s *Server) Start(ctx context.Context) error {
+func (s *Server) Start(ctx context.Context) {
 	<-ctx.Done()
 
 	s.mx.Lock()
@@ -95,8 +122,6 @@ func (s *Server) Start(ctx context.Context) error {
 	s.mx.Unlock()
 
 	s.servicesWG.Wait()
-
-	return nil
 }
 
 func (s *Server) HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte {
@@ -176,16 +201,21 @@ func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
 	return nil
 }
 
+// StartSession starts a new session. It makes sure that the new session doesn't share the token with an existing lobby.
 func (s *Server) StartSession(ctx context.Context, session *Session, controller controller.Controller) error {
-	var ok bool
-
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
-	_, ok = s.lobbyMap[session.Token]
+	_, ok := s.lobbyMap[session.Token]
 	if ok {
 		return ErrDuplicateSession
 	}
+
+	return s.startSession(ctx, session, controller)
+}
+
+func (s *Server) startSession(ctx context.Context, session *Session, controller controller.Controller) error {
+	var ok bool
 
 	for i := range session.Clients {
 		_, ok = s.clientMap[session.Clients[i].Token]
@@ -239,6 +269,118 @@ func (s *Server) StartSession(ctx context.Context, session *Session, controller 
 
 		delete(s.sessionMap, sessionSrv.Token)
 	}()
+
+	return nil
+}
+
+func (s *Server) UpgradeLobby(
+	ctx context.Context,
+	lobbyToken message.Token,
+	attachChannels func(session *Session),
+	controller controller.Controller,
+) error {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	lobby, ok := s.lobbyMap[lobbyToken]
+	if !ok {
+		return ErrUnknownLobby
+	}
+
+	resultCh := make(chan lobbyGetResp, 1)
+	lobby.srv.getRaw(resultCh)
+
+	response, ok := <-resultCh
+	if !ok {
+		return ErrUnknownLobby
+	}
+
+	session, ready := lobbyToSession(lobbyToken, response.slots)
+	if !ready {
+		return ErrLobbyNotReady
+	}
+
+	attachChannels(&session)
+	err := s.startSession(ctx, &session, controller)
+	if err != nil {
+		return err
+	}
+
+	lobby.cancelFn()
+	delete(s.lobbyMap, lobbyToken)
+
+	return nil
+}
+
+func (s *Server) getLobby(lobbyToken message.Token) *lobbyService {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	lobby, ok := s.lobbyMap[lobbyToken]
+	if !ok {
+		return nil
+	}
+
+	return lobby.srv
+}
+
+func (s *Server) GetLobby(lobbyToken message.Token, version int) (udpstar.Lobby, error) {
+	lobbySrv := s.getLobby(lobbyToken)
+	if lobbySrv == nil {
+		return udpstar.Lobby{}, ErrUnknownLobby
+	}
+
+	resultCh := make(chan udpstar.Lobby, 1)
+	lobbySrv.Get(version, resultCh)
+
+	response, ok := <-resultCh
+	if !ok {
+		return udpstar.Lobby{}, ErrUnknownLobby
+	}
+
+	return response, nil
+}
+
+func (s *Server) JoinLocal(lobbyToken, actorToken message.Token, slotIdx, localIdx byte, name string) error {
+	lobbySrv := s.getLobby(lobbyToken)
+	if lobbySrv == nil {
+		return ErrUnknownLobby
+	}
+
+	lobbySrv.JoinLocal(actorToken, slotIdx, localIdx, name)
+
+	return nil
+}
+
+func (s *Server) LeaveLocal(lobbyToken, actorToken message.Token) error {
+	lobbySrv := s.getLobby(lobbyToken)
+	if lobbySrv == nil {
+		return ErrUnknownLobby
+	}
+
+	lobbySrv.LeaveLocal(actorToken)
+
+	return nil
+}
+
+func (s *Server) RenameLobby(lobbyToken message.Token, name string) error {
+	lobbySrv := s.getLobby(lobbyToken)
+	if lobbySrv == nil {
+		return ErrUnknownLobby
+	}
+
+	lobbySrv.Rename(name)
+
+	return nil
+}
+
+func (s *Server) Evict(lobbyToken, actorToken message.Token) error {
+	lobbySrv := s.getLobby(lobbyToken)
+	if lobbySrv == nil {
+		return ErrUnknownLobby
+	}
+
+	lobbySrv.Evict(actorToken)
 
 	return nil
 }

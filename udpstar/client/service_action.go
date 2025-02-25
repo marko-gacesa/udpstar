@@ -1,10 +1,9 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
-	"errors"
 	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
@@ -43,7 +42,7 @@ func newActionService(
 	}
 }
 
-func (s *actionService) Start(ctx context.Context) error {
+func (s *actionService) Start(ctx context.Context) {
 	const pushbackDelay = 30 * time.Millisecond
 
 	actorActionCh := channel.Context(ctx, channel.JoinSlicePtr(s.actorActions, func(actor *actorAction) <-chan []byte {
@@ -61,11 +60,12 @@ func (s *actionService) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 
 		case actorActionData, ok := <-actorActionCh:
 			if !ok {
-				return errors.New("action channel closed")
+				s.log.Error("action channel closed")
+				return
 			}
 
 			actor := &s.actorActions[actorActionData.ID]
@@ -78,7 +78,8 @@ func (s *actionService) Start(ctx context.Context) error {
 
 		case timeData, ok := <-resendTimerCh:
 			if !ok {
-				return errors.New("resend timer channel closed")
+				s.log.Error("resend timer channel closed")
+				return
 			}
 
 			actor := &s.actorActions[timeData.ID]

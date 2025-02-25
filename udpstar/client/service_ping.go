@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package client
 
@@ -46,7 +46,7 @@ func (s *pingService) Latency() time.Duration {
 	return time.Duration(s.latency.Load())
 }
 
-func (s *pingService) Start(ctx context.Context) error {
+func (s *pingService) Start(ctx context.Context) {
 	var id uint32
 
 	ticker := time.NewTicker(pingPeriod)
@@ -57,7 +57,7 @@ func (s *pingService) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 
 		case now := <-ticker.C:
 			id++

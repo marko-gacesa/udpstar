@@ -1,34 +1,30 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package server
 
 import (
 	"context"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
-	"golang.org/x/sync/errgroup"
 	"net"
+	"sync"
 	"testing"
 	"time"
 )
-
-type mockConnection struct{}
-
-func (m mockConnection) Send([]byte, net.UDPAddr) error {
-	panic("not implemented")
-}
 
 func TestServer(t *testing.T) {
 	server := NewServer(mockConnection{})
 
 	ctx, cancelCtx := context.WithCancel(context.Background())
 
-	g, ctx := errgroup.WithContext(ctx)
+	wg := sync.WaitGroup{}
 
-	g.Go(func() error {
-		return server.Start(ctx)
-	})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		server.Start(ctx)
+	}()
 
-	g.Go(func() error {
+	go func() {
 		time.Sleep(10 * time.Millisecond)
 
 		var err error
@@ -58,14 +54,9 @@ func TestServer(t *testing.T) {
 		time.Sleep(10 * time.Millisecond)
 
 		cancelCtx()
+	}()
 
-		return errStop
-	})
-
-	err := g.Wait()
-	if err != errStop {
-		t.Errorf("unexpected error: %v", err)
-	}
+	wg.Wait()
 }
 
 func newSimpleSession(tokenSession, tokenStory, tokenClient, tokenActor message.Token) *Session {
@@ -95,4 +86,10 @@ func newSimpleSession(tokenSession, tokenStory, tokenClient, tokenActor message.
 			},
 		},
 	}
+}
+
+type mockConnection struct{}
+
+func (m mockConnection) Send([]byte, net.UDPAddr) error {
+	panic("not implemented")
 }

@@ -1,20 +1,18 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
-	"errors"
+	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"reflect"
+	"sync"
 	"testing"
 	"time"
 )
-
-var errStop = errors.New("STOP")
 
 func TestActionService_Send(t *testing.T) {
 	const (
@@ -32,22 +30,25 @@ func TestActionService_Send(t *testing.T) {
 		},
 	}
 
-	msgRec := newMessageRecorder()
-	lat := latencyFixed(100 * time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	actionSrv := newActionService(actors, msgRec.Chan(), lat, slog.Default())
+	msgRec := channel.NewRecorder[storymessage.ClientMessage]()
+	actionSrv := newActionService(actors, msgRec.Record(ctx), latencyFixed(100*time.Millisecond), slog.Default())
 
-	g, ctx := errgroup.WithContext(context.Background())
+	wg := sync.WaitGroup{}
 
-	g.Go(func() error {
-		return actionSrv.Start(ctx)
-	})
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		actionSrv.Start(ctx)
+	}()
 
 	action1 := sequence.Entry{Seq: 1, Payload: []byte("ABC")}
 	action2 := sequence.Entry{Seq: 2, Payload: []byte("XY")}
 	action3 := sequence.Entry{Seq: 3, Payload: []byte("Z")}
 
-	g.Go(func() error {
+	go func() {
 		inputCh <- action1.Payload
 		// send message: [action1]
 
@@ -88,10 +89,10 @@ func TestActionService_Send(t *testing.T) {
 		time.Sleep(140 * time.Millisecond)
 		// waited too long (latency is set to 100ms), the timer fired, resend recent messages: [action3]
 
-		return errStop
-	})
+		cancel()
+	}()
 
-	g.Wait()
+	wg.Wait()
 
 	wantActions := [][]sequence.Entry{
 		{action1},
@@ -101,7 +102,7 @@ func TestActionService_Send(t *testing.T) {
 		{action3},
 	}
 
-	messages := msgRec.Stop()
+	messages := msgRec.Recording()
 
 	compareActions(t, actors, wantActions, messages)
 }
@@ -122,22 +123,26 @@ func TestActionService_Missing(t *testing.T) {
 		},
 	}
 
-	msgRec := newMessageRecorder()
-	lat := latencyFixed(100 * time.Millisecond)
+	msgRec := channel.NewRecorder[storymessage.ClientMessage]()
 
-	actionSrv := newActionService(actors, msgRec.Chan(), lat, slog.Default())
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
 
-	g, ctx := errgroup.WithContext(context.Background())
+	actionSrv := newActionService(actors, msgRec.Record(ctx), latencyFixed(100*time.Millisecond), slog.Default())
 
-	g.Go(func() error {
-		return actionSrv.Start(ctx)
-	})
+	wg := sync.WaitGroup{}
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		actionSrv.Start(ctx)
+	}()
 
 	action1 := sequence.Entry{Seq: 1, Payload: []byte("ABC")}
 	action2 := sequence.Entry{Seq: 2, Payload: []byte("XY")}
 	action3 := sequence.Entry{Seq: 3, Payload: []byte("Z")}
 
-	g.Go(func() error {
+	go func() {
 		inputCh <- action1.Payload
 		// send message: [action1]
 
@@ -165,10 +170,10 @@ func TestActionService_Missing(t *testing.T) {
 
 		time.Sleep(10 * time.Millisecond)
 
-		return errStop
-	})
+		cancel()
+	}()
 
-	g.Wait()
+	wg.Wait()
 
 	wantActions := [][]sequence.Entry{
 		{action1},
@@ -177,7 +182,7 @@ func TestActionService_Missing(t *testing.T) {
 		{action1, action2},
 	}
 
-	messages := msgRec.Stop()
+	messages := msgRec.Recording()
 
 	compareActions(t, actors, wantActions, messages)
 }
@@ -217,46 +222,6 @@ func compareActions(t *testing.T, actors []Actor, wantActions [][]sequence.Entry
 			}
 		}
 	}
-}
-
-type messageRecorder struct {
-	ch       chan storymessage.ClientMessage
-	stop     chan struct{}
-	wait     chan struct{}
-	messages []storymessage.ClientMessage
-}
-
-func newMessageRecorder() *messageRecorder {
-	r := &messageRecorder{
-		ch:       make(chan storymessage.ClientMessage),
-		stop:     make(chan struct{}),
-		wait:     make(chan struct{}),
-		messages: make([]storymessage.ClientMessage, 0),
-	}
-
-	go func() {
-		defer close(r.wait)
-		for {
-			select {
-			case m := <-r.ch:
-				r.messages = append(r.messages, m)
-			case <-r.stop:
-				return
-			}
-		}
-	}()
-
-	return r
-}
-
-func (s *messageRecorder) Chan() chan<- storymessage.ClientMessage {
-	return s.ch
-}
-
-func (s *messageRecorder) Stop() []storymessage.ClientMessage {
-	close(s.stop)
-	<-s.wait
-	return s.messages
 }
 
 type latencyFixed time.Duration

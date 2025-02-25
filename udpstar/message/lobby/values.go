@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -8,17 +8,10 @@ const (
 	CategoryLobby message.Category = 2
 )
 
-type Action byte
-
-const (
-	ActionJoin Action = iota
-	ActionLeave
-)
-
 type SlotAvailability byte
 
 const (
-	SlotAvailable SlotAvailability = iota
-	SlotLocal
-	SlotRemote
+	SlotAvailable SlotAvailability = 0
+	SlotLocal0    SlotAvailability = 16
+	SlotRemote    SlotAvailability = 128
 )

@@ -1,10 +1,9 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package client
 
 import (
 	"context"
-	"errors"
 	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
@@ -42,7 +41,7 @@ func newStoryService(
 	}
 }
 
-func (s *storyService) Start(ctx context.Context) error {
+func (s *storyService) Start(ctx context.Context) {
 	const requestDelay = time.Second
 
 	requestTimer := channel.JoinSlice(s.storyStreams, func(story *storyStream) <-chan time.Time {
@@ -56,11 +55,12 @@ func (s *storyService) Start(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			return ctx.Err()
+			return
 
 		case timeData, ok := <-requestTimer:
 			if !ok {
-				return errors.New("request timer channel closed")
+				s.log.Error("request timer channel closed")
+				return
 			}
 
 			story := s.storyStreams[timeData.ID]
@@ -85,7 +85,11 @@ func (s *storyService) Start(ctx context.Context) error {
 			events, newlyMissing := sequence.Engine(msg.Stories, story.stream, &story.missing)
 
 			for i := range events {
-				story.story.Channel <- events[i]
+				select {
+				case story.story.Channel <- events[i]:
+				case <-ctx.Done():
+					return
+				}
 			}
 
 			lastSeq := story.stream.Sequence()
