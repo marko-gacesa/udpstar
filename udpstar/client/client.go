@@ -102,7 +102,8 @@ func (c *Client) Start(ctx context.Context) {
 
 			err := c.sender.Send(buffer[:size])
 			if err != nil {
-				c.log.Error("failed to send ping message to server")
+				c.log.Error("failed to send ping message to server",
+					"error", err.Error())
 			}
 		}
 	}()
@@ -128,7 +129,8 @@ func (c *Client) Start(ctx context.Context) {
 			err := c.sender.Send(buffer[:size])
 			if err != nil {
 				c.log.Error("failed to send message to server",
-					"size", size)
+					"size", size,
+					"error", err.Error())
 			}
 		}
 	}()

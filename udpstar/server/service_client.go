@@ -73,21 +73,6 @@ func newClientService(
 
 // Start starts the client service. Cancel the provided context to stop it.
 func (c *clientService) Start(ctx context.Context) error {
-	if err := func() error {
-		c.stateMx.Lock()
-		defer c.stateMx.Unlock()
-
-		if c.state != storymessage.ClientStateNew {
-			return ErrAlreadyStarted
-		}
-
-		c.state = storymessage.ClientStateLost
-
-		return nil
-	}(); err != nil {
-		return err
-	}
-
 	const bufferSize = 4 << 10
 	var buffer [bufferSize]byte
 
@@ -121,7 +106,8 @@ func (c *clientService) Start(ctx context.Context) error {
 					c.log.Error("failed to send message to client",
 						"addr", addr,
 						"type", msg.Type().String(),
-						"size", size)
+						"size", size,
+						"error", err.Error())
 				}
 			}()
 		}

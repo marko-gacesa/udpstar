@@ -11,6 +11,7 @@ import (
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
+	"slices"
 	"sync"
 )
 
@@ -100,7 +101,8 @@ func (c *Lobby) Start(ctx context.Context) {
 
 			err := c.sender.Send(buffer[:size])
 			if err != nil {
-				c.log.Error("failed to send ping message to server")
+				c.log.Error("failed to send ping message to server",
+					"error", err.Error())
 			}
 		}
 	}()
@@ -127,7 +129,8 @@ func (c *Lobby) Start(ctx context.Context) {
 			err := c.sender.Send(buffer[:size])
 			if err != nil {
 				c.log.Error("failed to send message to server",
-					"size", size)
+					"size", size,
+					"error", err.Error())
 			}
 		}
 	}()
@@ -190,11 +193,7 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 			c.log.Warn("received unrecognized message")
 		}
 
-		c.dataMx.Lock()
-		if isChanged := c.assign(msgSetup); isChanged {
-			c.data.Version++
-		}
-		c.dataMx.Unlock()
+		c.assign(msgSetup)
 
 		return
 	}
@@ -223,12 +222,18 @@ func (c *Lobby) Get(version int) *udpstar.Lobby {
 	}
 
 	result := new(udpstar.Lobby)
-	*result = c.data
+
+	result.Version = c.data.Version
+	result.Name = c.data.Name
+	result.Slots = slices.Clone(c.data.Slots)
 
 	return result
 }
 
-func (c *Lobby) assign(msg *lobbymessage.Setup) bool {
+func (c *Lobby) assign(msg *lobbymessage.Setup) {
+	c.dataMx.Lock()
+	defer c.dataMx.Unlock()
+
 	var changed bool
 	if c.data.Name != msg.Name {
 		changed = true
@@ -251,7 +256,9 @@ func (c *Lobby) assign(msg *lobbymessage.Setup) bool {
 		c.data.Slots[i].Latency = msg.Slots[i].Latency
 	}
 
-	return changed
+	if changed {
+		c.data.Version++
+	}
 }
 
 func (c *Lobby) sendCommand(cmd lobbyCommandProcessor) {

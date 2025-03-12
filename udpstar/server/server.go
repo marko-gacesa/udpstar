@@ -33,7 +33,7 @@ var _ interface {
 		controller controller.Controller,
 	) error
 
-	GetLobby(lobbyToken message.Token, version int) (udpstar.Lobby, error)
+	GetLobby(lobbyToken message.Token, version int) (*udpstar.Lobby, error)
 
 	JoinLocal(lobbyToken, actorToken message.Token, slotIdx, localIdx byte, name string) error
 	LeaveLocal(lobbyToken, actorToken message.Token) error
@@ -324,10 +324,10 @@ func (s *Server) getLobby(lobbyToken message.Token) *lobbyService {
 	return lobby.srv
 }
 
-func (s *Server) GetLobby(lobbyToken message.Token, version int) (udpstar.Lobby, error) {
+func (s *Server) GetLobby(lobbyToken message.Token, version int) (*udpstar.Lobby, error) {
 	lobbySrv := s.getLobby(lobbyToken)
 	if lobbySrv == nil {
-		return udpstar.Lobby{}, ErrUnknownLobby
+		return nil, ErrUnknownLobby
 	}
 
 	resultCh := make(chan udpstar.Lobby, 1)
@@ -335,10 +335,10 @@ func (s *Server) GetLobby(lobbyToken message.Token, version int) (udpstar.Lobby,
 
 	response, ok := <-resultCh
 	if !ok {
-		return udpstar.Lobby{}, ErrUnknownLobby
+		return nil, nil
 	}
 
-	return response, nil
+	return &response, nil
 }
 
 func (s *Server) JoinLocal(lobbyToken, actorToken message.Token, slotIdx, localIdx byte, name string) error {
@@ -494,9 +494,9 @@ func (s *Server) handleLobby(msg lobbymessage.ClientMessage, addr net.UDPAddr) {
 	lobby, ok := s.lobbyMap[lobbyToken]
 	s.mx.Unlock()
 	if !ok {
-		s.log.Warn("unknown staging area",
+		s.log.Warn("unknown lobby",
 			"addr", addr,
-			"staging_area", lobbyToken,
+			"lobby", lobbyToken,
 			"client", msg.GetClientToken(),
 			"actor", msg.GetActorToken())
 		return

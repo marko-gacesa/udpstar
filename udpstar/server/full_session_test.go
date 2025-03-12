@@ -3,16 +3,13 @@
 package server_test
 
 import (
-	"bytes"
 	"context"
-	"fmt"
 	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/client"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"github.com/marko-gacesa/udpstar/udpstar/server"
 	"log/slog"
-	"net"
 	"os"
 	"reflect"
 	"sync"
@@ -23,12 +20,6 @@ import (
 func TestSession(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-
-	w := NewNetwork()
-	node1Sender, nodeListen1 := w.AddNode()
-	node2Sender, nodeListen2 := w.AddNode()
-	serverSender, serverListen := w.Run()
-	defer w.Stop()
 
 	sessionToken := message.Token(66)
 	storyToken := message.Token(42)
@@ -103,6 +94,12 @@ func TestSession(t *testing.T) {
 		},
 	}
 
+	w := NewNetwork(t)
+	node1Sender := w.AddClient()
+	node2Sender := w.AddClient()
+	serverSender := w.Run()
+	defer w.Wait()
+
 	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource:   false,
 		Level:       slog.LevelDebug,
@@ -166,6 +163,10 @@ func TestSession(t *testing.T) {
 		return
 	}
 
+	serverSender.SetHandler(srv.HandleIncomingMessages)
+	node1Sender.SetHandler(cli1.HandleIncomingMessages)
+	node2Sender.SetHandler(cli2.HandleIncomingMessages)
+
 	wgNodes := &sync.WaitGroup{}
 	wgNodes.Add(3)
 	go func() {
@@ -179,30 +180,6 @@ func TestSession(t *testing.T) {
 	go func() {
 		defer wgNodes.Done()
 		cli2.Start(ctx)
-	}()
-
-	wgNet := &sync.WaitGroup{}
-	wgNet.Add(3)
-	go func() {
-		defer wgNet.Done()
-		for data := range nodeListen1 {
-			cli1.HandleIncomingMessages(bytes.Clone(data))
-		}
-	}()
-	go func() {
-		defer wgNet.Done()
-		for data := range nodeListen2 {
-			cli2.HandleIncomingMessages(bytes.Clone(data))
-		}
-	}()
-	go func() {
-		defer wgNet.Done()
-		for msg := range serverListen {
-			response := srv.HandleIncomingMessages(bytes.Clone(msg.payload), msg.addr)
-			if len(response) > 0 {
-				w.ServerSendIP(response, msg.addr.IP)
-			}
-		}
 	}()
 
 	const pause = time.Millisecond
@@ -234,13 +211,10 @@ func TestSession(t *testing.T) {
 
 	time.Sleep(pause)
 
+	w.Wait()
+
 	cancel()
-
 	wgNodes.Wait()
-
-	w.Stop()
-
-	wgNet.Wait()
 
 	if want, got := [][]byte{{72}}, recActor1.Recording(); !reflect.DeepEqual(want, got) {
 		t.Errorf("actor1 recording mismatch: want=%v got=%v", want, got)
@@ -284,135 +258,4 @@ func TestSession(t *testing.T) {
 	if !reflect.DeepEqual(want, recordingStoryCli2) {
 		t.Errorf("cli2 story recording mismatch: want=%v got=%v", want, recordingStoryCli2)
 	}
-}
-
-// Network simulates network layer.
-
-func NewNetwork() *Network {
-	w := &Network{
-		chServerIn:  make(chan packetFromClient),
-		clientNodes: sync.Map{}, // net.IP.String() -> chan []byte (addr->chIn)
-	}
-
-	w.cleanupFn = sync.OnceFunc(func() {
-		w.clientNodes.Range(func(key, value any) bool {
-			chIn := value.(chan []byte)
-			close(chIn)
-			return true
-		})
-		close(w.chServerIn)
-	})
-
-	return w
-}
-
-type Network struct {
-	chServerIn  chan packetFromClient
-	nodeCount   int
-	clientNodes sync.Map
-	wgDone      sync.WaitGroup
-	cleanupFn   func()
-}
-
-type packetFromClient struct {
-	addr    net.IP
-	payload []byte
-}
-
-type packetServer struct {
-	addr    net.UDPAddr
-	payload []byte
-}
-
-func (w *Network) Run() (server.Sender, <-chan packetServer) {
-	chServerOut := make(chan packetServer)
-
-	w.clientNodes.Range(func(key, value any) bool {
-		addr := key.(string)
-		fmt.Printf("Registered network node: %s\n", addr)
-		return true
-	})
-
-	w.wgDone.Add(1)
-	go func() {
-		defer w.wgDone.Done()
-		defer close(chServerOut)
-
-		for pack := range w.chServerIn {
-			chServerOut <- packetServer{
-				addr:    net.UDPAddr{IP: pack.addr, Port: 101},
-				payload: bytes.Clone(pack.payload),
-			}
-		}
-	}()
-
-	return w, chServerOut
-}
-
-func (w *Network) Stop() {
-	w.cleanupFn()
-	w.wgDone.Wait()
-}
-
-func (w *Network) AddNode() (client.Sender, <-chan []byte) {
-	chIn := make(chan []byte)
-	chOut := make(chan []byte)
-
-	w.nodeCount++
-	addr := net.IP{192, 168, 0, byte(w.nodeCount)}
-
-	w.clientNodes.Store(addr.String(), chIn)
-
-	w.wgDone.Add(1)
-	go func() {
-		defer w.wgDone.Done()
-		defer close(chOut)
-
-		for data := range chIn {
-			chOut <- bytes.Clone(data)
-		}
-	}()
-
-	return clientSender{
-		addr:       addr,
-		chServerIn: w.chServerIn,
-	}, chOut
-}
-
-func (w *Network) ServerSendIP(data []byte, ip net.IP) {
-	if ip == nil {
-		w.clientNodes.Range(func(key, value any) bool {
-			chIn := value.(chan []byte)
-			chIn <- bytes.Clone(data)
-			return true
-		})
-		return
-	}
-
-	value, ok := w.clientNodes.Load(ip.String())
-	if !ok {
-		fmt.Printf("NODE NOT FOUND: %v\n", ip.String())
-		return
-	}
-
-	chIn := value.(chan []byte)
-	chIn <- bytes.Clone(data)
-}
-
-func (w *Network) Send(data []byte, addr net.UDPAddr) error {
-	w.ServerSendIP(data, addr.IP)
-	return nil
-}
-
-type clientSender struct {
-	addr       net.IP
-	chServerIn chan<- packetFromClient
-}
-
-func (s clientSender) Send(data []byte) error {
-	s.chServerIn <- packetFromClient{
-		addr:    s.addr,
-		payload: bytes.Clone(data),
-	}
-	return nil
 }

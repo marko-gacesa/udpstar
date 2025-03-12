@@ -115,7 +115,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		time.Sleep(100 * time.Millisecond)
 		statePack := client1Srv.GetState()
 
-		if statePack.State != storymessage.ClientStateLost {
+		if statePack.State != storymessage.ClientStateNew {
 			t.Errorf("unexpected client state: %s", statePack.State)
 		}
 

@@ -3,7 +3,6 @@
 package server_test
 
 import (
-	"bytes"
 	"context"
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/client"
@@ -11,7 +10,6 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/server"
 	"log/slog"
 	"os"
-	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -19,12 +17,6 @@ import (
 
 func TestLobby(t *testing.T) {
 	const lobbyName = "test-lobby"
-
-	w := NewNetwork()
-	node1Sender, nodeListen1 := w.AddNode()
-	node2Sender, nodeListen2 := w.AddNode()
-	serverSender, serverListen := w.Run()
-	defer w.Stop()
 
 	lobbyToken := message.Token(502)
 	story1Token := message.Token(78)
@@ -37,6 +29,12 @@ func TestLobby(t *testing.T) {
 	actor2Token := message.Token(2) // @ client 1
 	actor3Token := message.Token(3) // @ client 2
 	actor4Token := message.Token(4) // @ server 2
+
+	w := NewNetwork(t)
+	node1Sender := w.AddClient()
+	node2Sender := w.AddClient()
+	serverSender := w.Run()
+	defer w.Wait()
 
 	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
 		AddSource:   false,
@@ -57,6 +55,10 @@ func TestLobby(t *testing.T) {
 		t.Errorf("failed to start client 2: %s", err.Error())
 		return
 	}
+
+	serverSender.SetHandler(srv.HandleIncomingMessages)
+	node1Sender.SetHandler(cli1.HandleIncomingMessages)
+	node2Sender.SetHandler(cli2.HandleIncomingMessages)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -86,31 +88,8 @@ func TestLobby(t *testing.T) {
 		cli2.Start(ctx)
 	}()
 
-	wgNet := &sync.WaitGroup{}
-	wgNet.Add(3)
-	go func() {
-		defer wgNet.Done()
-		for data := range nodeListen1 {
-			cli1.HandleIncomingMessages(bytes.Clone(data))
-		}
-	}()
-	go func() {
-		defer wgNet.Done()
-		for data := range nodeListen2 {
-			cli2.HandleIncomingMessages(bytes.Clone(data))
-		}
-	}()
-	go func() {
-		defer wgNet.Done()
-		for msg := range serverListen {
-			response := srv.HandleIncomingMessages(bytes.Clone(msg.payload), msg.addr)
-			if len(response) > 0 {
-				w.ServerSendIP(response, msg.addr.IP)
-			}
-		}
-	}()
-
-	const pause = time.Millisecond
+	const pause = 100 * time.Millisecond
+	const versionNone = -1
 
 	time.Sleep(pause)
 
@@ -126,19 +105,21 @@ func TestLobby(t *testing.T) {
 		actor4Name = "srv2-act4"
 	)
 
-	var lobbySrv, lobbyCli1, lobbyCli2, lobbyExpected udpstar.Lobby
+	var lobbySrv, lobbyCli1, lobbyCli2 *udpstar.Lobby
+	var lobbyExpected udpstar.Lobby
 
 	// *** join local=0 slot=0, join remote client=1 actor=2 slot=1
 
-	srv.JoinLocal(lobbyToken, actor1Token, 0, 0, actor1Name)
 	cli1.Join(actor2Token, 1, actor2Name)
+	srv.JoinLocal(lobbyToken, actor1Token, 0, 0, actor1Name)
 
 	time.Sleep(pause)
+	w.Wait()
 
-	lobbySrv, _ = srv.GetLobby(lobbyToken, 0)
-	lobbyCli1 = *cli1.Get(0)
+	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
+	lobbyCli1 = cli1.Get(versionNone)
 
-	if !compareLobby(t, "1", lobbySrv, lobbyCli1) {
+	if !compareLobby(t, "1", *lobbySrv, *lobbyCli1) {
 		return
 	}
 
@@ -147,11 +128,12 @@ func TestLobby(t *testing.T) {
 	srv.JoinLocal(lobbyToken, actor4Token, 3, 1, actor4Name)
 
 	time.Sleep(pause)
+	w.Wait()
 
-	lobbySrv, _ = srv.GetLobby(lobbyToken, 0)
-	lobbyCli2 = *cli1.Get(0)
+	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
+	lobbyCli2 = cli1.Get(versionNone)
 
-	if !compareLobby(t, "2", lobbySrv, lobbyCli2) {
+	if !compareLobby(t, "2", *lobbySrv, *lobbyCli2) {
 		return
 	}
 
@@ -162,11 +144,12 @@ func TestLobby(t *testing.T) {
 	srv.RenameLobby(lobbyToken, lobbyNameNew)
 
 	time.Sleep(pause)
+	w.Wait()
 
-	lobbySrv, _ = srv.GetLobby(lobbyToken, 0)
-	lobbyCli1 = *cli1.Get(0)
+	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
+	lobbyCli1 = cli1.Get(versionNone)
 
-	if !compareLobby(t, "3", lobbySrv, lobbyCli1) {
+	if !compareLobby(t, "3", *lobbySrv, *lobbyCli1) {
 		return
 	}
 
@@ -180,11 +163,12 @@ func TestLobby(t *testing.T) {
 	cli1.Join(actor3Token, 2, actor3Name)
 
 	time.Sleep(pause)
+	w.Wait()
 
-	lobbySrv, _ = srv.GetLobby(lobbyToken, 0)
-	lobbyCli2 = *cli1.Get(0)
+	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
+	lobbyCli2 = cli1.Get(versionNone)
 
-	if !compareLobby(t, "4", lobbySrv, lobbyCli2) {
+	if !compareLobby(t, "4", *lobbySrv, *lobbyCli2) {
 		return
 	}
 
@@ -193,8 +177,9 @@ func TestLobby(t *testing.T) {
 	cli1.Leave(actor2Token)
 
 	time.Sleep(pause)
+	w.Wait()
 
-	lobbyCli2 = *cli1.Get(0)
+	lobbyCli2 = cli1.Get(versionNone)
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
@@ -206,7 +191,7 @@ func TestLobby(t *testing.T) {
 		},
 	}
 
-	if !compareLobby(t, "5", lobbyCli2, lobbyExpected) {
+	if !compareLobby(t, "5", *lobbyCli2, lobbyExpected) {
 		return
 	}
 
@@ -215,8 +200,9 @@ func TestLobby(t *testing.T) {
 	cli1.Join(actor2Token, 1, actor2Name)
 
 	time.Sleep(pause)
+	w.Wait()
 
-	lobbySrv, _ = srv.GetLobby(lobbyToken, 0)
+	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
@@ -228,30 +214,40 @@ func TestLobby(t *testing.T) {
 		},
 	}
 
-	if !compareLobby(t, "6", lobbySrv, lobbyExpected) {
+	if !compareLobby(t, "6", *lobbySrv, lobbyExpected) {
 		return
 	}
 
 	cancel()
-
 	wgNodes.Wait()
-
-	w.Stop()
-
-	wgNet.Wait()
 }
 
 func compareLobby(t *testing.T, key string, a, b udpstar.Lobby) (equals bool) {
 	equals = true
 	if a.Name != b.Name {
 		t.Errorf("lobby name doesn't match: key=%s a=%v b=%v",
-			key, a.Name, a.Name)
+			key, a.Name, b.Name)
 		equals = false
 	}
-	if !slices.Equal(a.Slots, b.Slots) {
-		t.Errorf("lobby slots not equal: key=%s a=%v b=%v",
-			key, a.Slots, a.Slots)
+
+	if len(a.Slots) != len(b.Slots) {
+		t.Errorf("lobby have different number of slots: key=%s a=%d b=%d",
+			key, len(a.Slots), len(b.Slots))
 		equals = false
+		return
 	}
+
+	n := len(a.Slots)
+	for i := 0; i < n; i++ {
+		as := a.Slots[i]
+		bs := b.Slots[i]
+
+		if as != bs {
+			t.Errorf("lobby slots not equal: key=%s index=%d a=%v b=%v",
+				key, i, as, bs)
+			equals = false
+		}
+	}
+
 	return
 }
