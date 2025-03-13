@@ -5,6 +5,7 @@ package server
 import (
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
+	"sync"
 )
 
 type localActorData struct {
@@ -23,6 +24,7 @@ type remoteActorData struct {
 	Actor
 	ActionStream  *sequence.Stream
 	ActionMissing sequence.RangeSet
+	mx            sync.Mutex
 }
 
 func newRemoteActorData(actorSetup Actor) remoteActorData {

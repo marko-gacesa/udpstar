@@ -451,6 +451,10 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 			return nil
 		}
 
+		if msgActionConfirm == nil {
+			return nil
+		}
+
 		responseBuffer := make([]byte, msgActionConfirm.Size())
 		msgActionConfirm.Put(responseBuffer)
 		return responseBuffer

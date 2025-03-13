@@ -152,7 +152,7 @@ func (c *clientService) GetState() clientStatePackage {
 	return clientStatePackage{State: c.state, Latency: c.data.Latency}
 }
 
-func (c *clientService) HandleActionPack(msgActionPack *storymessage.ActionPack) (storymessage.ActionConfirm, error) {
+func (c *clientService) HandleActionPack(msgActionPack *storymessage.ActionPack) (*storymessage.ActionConfirm, error) {
 	var actor *remoteActorData
 	for i := range c.remoteActors {
 		if c.remoteActors[i].Token == msgActionPack.ActorToken {
@@ -161,18 +161,12 @@ func (c *clientService) HandleActionPack(msgActionPack *storymessage.ActionPack)
 		}
 	}
 	if actor == nil {
-		return storymessage.ActionConfirm{}, ErrUnknownRemoteActor
+		return nil, ErrUnknownRemoteActor
 	}
+
+	actor.mx.Lock()
 
 	actions, _ := sequence.Engine(msgActionPack.Actions, actor.ActionStream, &actor.ActionMissing)
-
-	for i := range actions {
-		select {
-		case <-c.doneCh:
-			return storymessage.ActionConfirm{}, nil
-		case actor.Channel <- actions[i].Payload: // Write to external channel
-		}
-	}
 
 	lastActionSeq := actor.ActionStream.Sequence()
 
@@ -181,7 +175,17 @@ func (c *clientService) HandleActionPack(msgActionPack *storymessage.ActionPack)
 		missing = missing[len(missing)-controller.ActionBufferCapacity:]
 	}
 
-	msgActionConfirm := storymessage.ActionConfirm{
+	actor.mx.Unlock()
+
+	for i := range actions {
+		select {
+		case <-c.doneCh:
+			return nil, nil
+		case actor.Channel <- actions[i].Payload: // Write to external channel
+		}
+	}
+
+	msgActionConfirm := &storymessage.ActionConfirm{
 		HeaderServer: storymessage.HeaderServer{
 			SessionToken: c.Session.Token,
 		},
