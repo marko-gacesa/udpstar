@@ -13,6 +13,8 @@ import (
 	"time"
 )
 
+const lobbySendDelay = 10 * time.Millisecond
+
 type lobbyService struct {
 	Token message.Token
 	name  string
@@ -21,6 +23,8 @@ type lobbyService struct {
 	sender        Sender
 
 	slots   []LobbySlot
+	state   lobbymessage.State
+	clients map[message.Token]int
 	version int
 
 	commandCh chan lobbyCommandProcessor
@@ -46,6 +50,8 @@ func newLobbyService(
 		sender:        udpSender,
 
 		slots:   make([]LobbySlot, len(setup.SlotStories)),
+		state:   lobbymessage.StateActive,
+		clients: make(map[message.Token]int, len(setup.SlotStories)),
 		version: 0,
 
 		commandCh: make(chan lobbyCommandProcessor),
@@ -88,15 +94,44 @@ func (s *lobbyService) start(ctx context.Context) error {
 
 		case <-broadcastTimer.C:
 			msg := s.getSetupMessage()
-			size := msg.Put(buffer[:])
 
-			err := s.sender.Send(buffer[:size], s.broadcastAddr)
-			if err != nil {
-				s.log.Error("failed to broadcast",
-					"err", err.Error())
+			// Broadcast the message if there are still available slots.
+			if s.state == lobbymessage.StateActive && len(s.broadcastAddr.IP) > 0 {
+				size := msg.Put(buffer[:])
+				err := s.sender.Send(buffer[:size], s.broadcastAddr)
+				if err != nil {
+					s.log.Error("failed to broadcast",
+						"err", err.Error())
+				}
+
+				broadcastTimer.Reset(broadcastPeriod)
 			}
 
-			broadcastTimer.Reset(broadcastPeriod)
+			// Send message to every client directly, but with relevant actor tokens filled.
+			for clientToken, count := range s.clients {
+				if count == 0 {
+					delete(s.clients, clientToken)
+					continue
+				}
+
+				var addr net.UDPAddr
+				for i := range s.slots {
+					if s.slots[i].IsRemote && s.slots[i].ClientToken == clientToken {
+						msg.Slots[i].ActorToken = s.slots[i].ActorToken
+						addr = s.slots[i].Addr
+					} else {
+						msg.Slots[i].ActorToken = 0
+					}
+				}
+
+				size := msg.Put(buffer[:])
+				err := s.sender.Send(buffer[:size], addr)
+				if err != nil {
+					s.log.Error("failed to send to client",
+						"client", clientToken,
+						"err", err.Error())
+				}
+			}
 
 		case command := <-s.commandCh:
 			changed := command.process(s)
@@ -113,16 +148,8 @@ func (s *lobbyService) start(ctx context.Context) error {
 			case <-broadcastTimer.C:
 			default:
 			}
-			broadcastTimer.Reset(time.Microsecond)
+			broadcastTimer.Reset(lobbySendDelay)
 		}
-	}
-}
-
-func (s *lobbyService) getRaw(respCh chan<- lobbyGetResp) {
-	select {
-	case <-s.doneCh:
-		close(respCh)
-	case s.commandCh <- lobbyGetReqRaw{ResponseCh: respCh}:
 	}
 }
 
@@ -152,7 +179,7 @@ func (s *lobbyService) LeaveLocal(actorToken message.Token) {
 	}
 }
 
-func (s *lobbyService) Rename(name string) {
+func (s *lobbyService) ChangeName(name string) {
 	select {
 	case <-s.doneCh:
 	case s.commandCh <- lobbyChangeName{name: name}:
@@ -163,6 +190,21 @@ func (s *lobbyService) Evict(actorToken message.Token) {
 	select {
 	case <-s.doneCh:
 	case s.commandCh <- lobbyEvictReq{ActorToken: actorToken}:
+	}
+}
+
+func (s *lobbyService) EvictClient(clientToken message.Token) {
+	select {
+	case <-s.doneCh:
+	case s.commandCh <- lobbyEvictClientReq{ClientToken: clientToken}:
+	}
+}
+
+func (s *lobbyService) Finish(state lobbymessage.State, expectedVersion int, respCh chan<- lobbyFinishResp) {
+	select {
+	case <-s.doneCh:
+		close(respCh)
+	case s.commandCh <- lobbyFinishReq{state: state, expectedVersion: expectedVersion, responseCh: respCh}:
 	}
 }
 
@@ -208,6 +250,7 @@ func (s *lobbyService) localJoin(actorToken message.Token, slotIdx, localIdx byt
 	}
 
 	s.slots[slotIdx].local(actorToken, localIdx, name)
+	s.updateState()
 
 	return true
 }
@@ -216,6 +259,7 @@ func (s *lobbyService) localLeave(actorToken message.Token) bool {
 	for i := 0; i < len(s.slots); i++ {
 		if actorToken == s.slots[i].ActorToken {
 			s.slots[i].clear()
+			s.state = lobbymessage.StateActive
 			return true
 		}
 	}
@@ -234,12 +278,15 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 		if s.slots[slotIdx].ActorToken == msg.ActorToken {
 			// the slot is not available, but is claimed by the actor
 
-			if s.slots[slotIdx].ClientToken != msg.ClientToken {
+			if clientToken := s.slots[slotIdx].ClientToken; clientToken != msg.ClientToken {
 				// actor somehow changed the client token
-				s.evictClient(s.slots[slotIdx].ClientToken)
+				s.evictClient(clientToken)
 			}
 
+			s.clients[msg.ClientToken]++
 			s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, addr, msg.GetLatency())
+			s.state = lobbymessage.StateActive
+
 			return true
 		}
 
@@ -248,13 +295,24 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 
 	// remove the actor if already in the list
 	for i := 0; i < len(s.slots); i++ {
-		if msg.ActorToken == s.slots[i].ActorToken {
-			s.slots[i].clear()
-			break
+		if msg.ActorToken != s.slots[i].ActorToken {
+			continue
 		}
+
+		if clientToken := s.slots[i].ClientToken; clientToken != msg.ClientToken {
+			// actor somehow changed the client token
+			s.evictClient(clientToken)
+		} else {
+			s.clients[s.slots[i].ClientToken]--
+			s.slots[i].clear()
+		}
+
+		break
 	}
 
+	s.clients[msg.ClientToken]++
 	s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, addr, msg.GetLatency())
+	s.updateState()
 
 	return true
 }
@@ -262,7 +320,9 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 func (s *lobbyService) remoteLeave(msg *lobbymessage.Leave) bool {
 	for i := 0; i < len(s.slots); i++ {
 		if msg.ActorToken == s.slots[i].ActorToken {
+			s.clients[s.slots[i].ClientToken]--
 			s.slots[i].clear()
+			s.state = lobbymessage.StateActive
 			return true
 		}
 	}
@@ -275,9 +335,11 @@ func (s *lobbyService) evictClient(clientToken message.Token) bool {
 	for i := 0; i < len(s.slots); i++ {
 		if clientToken == s.slots[i].ClientToken {
 			s.slots[i].clear()
+			s.state = lobbymessage.StateActive
 			changed = true
 		}
 	}
+	delete(s.clients, clientToken)
 
 	return changed
 }
@@ -285,12 +347,26 @@ func (s *lobbyService) evictClient(clientToken message.Token) bool {
 func (s *lobbyService) evictActor(actorToken message.Token) bool {
 	for i := 0; i < len(s.slots); i++ {
 		if actorToken == s.slots[i].ActorToken {
+			if s.slots[i].IsRemote {
+				s.clients[s.slots[i].ClientToken]--
+			}
 			s.slots[i].clear()
+			s.state = lobbymessage.StateActive
 			return true
 		}
 	}
 
 	return false
+}
+
+func (s *lobbyService) updateState() {
+	for i := 0; i < len(s.slots); i++ {
+		if s.slots[i].Available {
+			s.state = lobbymessage.StateActive
+			return
+		}
+	}
+	s.state = lobbymessage.StateReady
 }
 
 func (s *lobbyService) getSetupMessage() lobbymessage.Setup {
@@ -302,7 +378,10 @@ func (s *lobbyService) getSetupMessage() lobbymessage.Setup {
 
 	for i := 0; i < len(msg.Slots); i++ {
 		msg.Slots[i] = lobbymessage.Slot(s.slots[i].asExt())
+		msg.Slots[i].ActorToken = 0 // obfuscate
 	}
+
+	msg.State = s.state
 
 	return msg
 }
@@ -365,6 +444,7 @@ func (d *LobbySlot) clear() {
 func (d *LobbySlot) asExt() udpstar.LobbySlot {
 	return udpstar.LobbySlot{
 		StoryToken:   d.StoryToken,
+		ActorToken:   d.ActorToken,
 		Availability: d.availability(),
 		Name:         d.Name,
 		Latency:      d.Latency,
@@ -381,11 +461,11 @@ func (d *LobbySlot) availability() lobbymessage.SlotAvailability {
 	return avail
 }
 
-func lobbyToSession(token message.Token, slots []LobbySlot) (Session, bool) {
+// lobbyToSession converts a lobby to session, but all channels are left unassigned (nil).
+func lobbyToSession(token message.Token, slots []LobbySlot) Session {
 	var session Session
 
 	session.Token = token
-	ready := true
 
 	var lastStoryToken message.Token
 	for _, slot := range slots {
@@ -399,9 +479,7 @@ func lobbyToSession(token message.Token, slots []LobbySlot) (Session, bool) {
 			})
 		}
 
-		if slot.Available {
-			ready = false
-		} else if slot.IsLocal {
+		if slot.IsLocal {
 			session.LocalActors = append(session.LocalActors, LocalActor{
 				Actor: Actor{
 					Token: slot.ActorToken,
@@ -441,34 +519,25 @@ func lobbyToSession(token message.Token, slots []LobbySlot) (Session, bool) {
 		}
 	}
 
-	return session, ready
+	return session
+}
+
+func (s *lobbyService) toLobby() udpstar.Lobby {
+	slots := make([]udpstar.LobbySlot, len(s.slots))
+	for i := range s.slots {
+		slots[i] = s.slots[i].asExt()
+	}
+
+	return udpstar.Lobby{
+		Version: s.version,
+		Name:    s.name,
+		Slots:   slots,
+		State:   s.state,
+	}
 }
 
 type lobbyCommandProcessor interface {
 	process(s *lobbyService) bool
-}
-
-type lobbyGetReqRaw struct {
-	ResponseCh chan<- lobbyGetResp
-}
-
-type lobbyGetResp struct {
-	name  string
-	slots []LobbySlot
-}
-
-func (req lobbyGetReqRaw) process(s *lobbyService) bool {
-	slots := make([]LobbySlot, len(s.slots))
-	copy(slots, s.slots)
-
-	req.ResponseCh <- lobbyGetResp{
-		name:  s.name,
-		slots: slots,
-	}
-
-	close(req.ResponseCh)
-
-	return false
 }
 
 type lobbyGetReq struct {
@@ -483,16 +552,7 @@ func (req lobbyGetReq) process(s *lobbyService) bool {
 		return false
 	}
 
-	slots := make([]udpstar.LobbySlot, len(s.slots))
-	for i := range s.slots {
-		slots[i] = s.slots[i].asExt()
-	}
-
-	req.ResponseCh <- udpstar.Lobby{
-		Version: s.version,
-		Name:    s.name,
-		Slots:   slots,
-	}
+	req.ResponseCh <- s.toLobby()
 
 	return false
 }
@@ -524,6 +584,14 @@ func (req lobbyEvictReq) process(s *lobbyService) bool {
 	return s.evictActor(req.ActorToken)
 }
 
+type lobbyEvictClientReq struct {
+	ClientToken message.Token
+}
+
+func (req lobbyEvictClientReq) process(s *lobbyService) bool {
+	return s.evictClient(req.ClientToken)
+}
+
 type lobbyRemoteJoin struct {
 	msg  *lobbymessage.Join
 	addr net.UDPAddr
@@ -549,4 +617,51 @@ func (req lobbyChangeName) process(s *lobbyService) bool {
 	changed := req.name != s.name
 	s.name = req.name
 	return changed
+}
+
+type lobbyFinishReq struct {
+	state           lobbymessage.State
+	expectedVersion int
+	responseCh      chan<- lobbyFinishResp
+}
+
+type lobbyFinishResp struct {
+	version int
+	name    string
+	slots   []LobbySlot
+	state   lobbymessage.State
+	err     error
+}
+
+func (req lobbyFinishReq) process(s *lobbyService) bool {
+	defer close(req.responseCh)
+
+	if s.state == lobbymessage.StateActive || req.expectedVersion != s.version {
+		req.responseCh <- lobbyFinishResp{err: ErrLobbyNotReady}
+		return false
+	}
+
+	switch s.state {
+	case lobbymessage.StateReady:
+		s.state = lobbymessage.StateStarting3
+	case lobbymessage.StateStarting3:
+		s.state = lobbymessage.StateStarting2
+	case lobbymessage.StateStarting2:
+		s.state = lobbymessage.StateStarting1
+	case lobbymessage.StateStarting1, lobbymessage.StateStarting:
+		s.state = lobbymessage.StateStarting
+	}
+
+	slots := make([]LobbySlot, len(s.slots))
+	copy(slots, s.slots)
+
+	req.responseCh <- lobbyFinishResp{
+		version: s.version,
+		name:    s.name,
+		slots:   slots,
+		state:   s.state,
+		err:     nil,
+	}
+
+	return true
 }

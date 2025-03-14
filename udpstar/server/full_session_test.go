@@ -18,6 +18,12 @@ import (
 )
 
 func TestSession(t *testing.T) {
+	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource:   false,
+		Level:       slog.LevelDebug,
+		ReplaceAttr: nil,
+	}))
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -94,21 +100,15 @@ func TestSession(t *testing.T) {
 		},
 	}
 
-	w := NewNetwork(t)
+	w := NewNetwork(t, nil, l)
 	node1Sender := w.AddClient()
 	node2Sender := w.AddClient()
 	serverSender := w.Run()
 	defer w.Wait()
 
-	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		AddSource:   false,
-		Level:       slog.LevelDebug,
-		ReplaceAttr: nil,
-	}))
-
 	srv := server.NewServer(serverSender, server.WithLogger(l))
 
-	err := srv.StartSession(ctx, &session, nil)
+	err := srv.StartSession(ctx, &session, nil, nil)
 	if err != nil {
 		t.Errorf("failed to start server session: %s", err.Error())
 		return

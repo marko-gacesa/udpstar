@@ -16,6 +16,12 @@ import (
 )
 
 func TestLobby(t *testing.T) {
+	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
+		AddSource:   false,
+		Level:       slog.LevelDebug,
+		ReplaceAttr: nil,
+	}))
+
 	const lobbyName = "test-lobby"
 
 	lobbyToken := message.Token(502)
@@ -30,19 +36,19 @@ func TestLobby(t *testing.T) {
 	actor3Token := message.Token(3) // @ client 2
 	actor4Token := message.Token(4) // @ server 2
 
-	w := NewNetwork(t)
+	broadcastAddr := []byte{10, 0, 0, 1}
+
+	w := NewNetwork(t, broadcastAddr, l)
 	node1Sender := w.AddClient()
 	node2Sender := w.AddClient()
 	serverSender := w.Run()
 	defer w.Wait()
 
-	l := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{
-		AddSource:   false,
-		Level:       slog.LevelDebug,
-		ReplaceAttr: nil,
-	}))
-
-	srv := server.NewServer(serverSender, server.WithLogger(l))
+	srv := server.NewServer(
+		serverSender,
+		server.WithLogger(l),
+		//server.WithBroadcastAddress(net.UDPAddr{IP: broadcastAddr}),
+	)
 
 	cli1, err := client.NewLobby(node1Sender, lobbyToken, client1Token, client.WithLobbyLogger(l))
 	if err != nil {
@@ -69,7 +75,7 @@ func TestLobby(t *testing.T) {
 		SlotStories: lobbySlots,
 	})
 	if err != nil {
-		t.Errorf("failed to start server session: %s", err.Error())
+		t.Errorf("failed to start server lobby: %s", err.Error())
 		return
 	}
 
@@ -88,7 +94,7 @@ func TestLobby(t *testing.T) {
 		cli2.Start(ctx)
 	}()
 
-	const pause = 100 * time.Millisecond
+	const pause = 20 * time.Millisecond
 	const versionNone = -1
 
 	time.Sleep(pause)
@@ -108,7 +114,7 @@ func TestLobby(t *testing.T) {
 	var lobbySrv, lobbyCli1, lobbyCli2 *udpstar.Lobby
 	var lobbyExpected udpstar.Lobby
 
-	// *** join local=0 slot=0, join remote client=1 actor=2 slot=1
+	// *** step "1": join local=0 slot=0, join remote client=1 actor=2 slot=1
 
 	cli1.Join(actor2Token, 1, actor2Name)
 	srv.JoinLocal(lobbyToken, actor1Token, 0, 0, actor1Name)
@@ -119,25 +125,79 @@ func TestLobby(t *testing.T) {
 	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
 	lobbyCli1 = cli1.Get(versionNone)
 
-	if !compareLobby(t, "1", *lobbySrv, *lobbyCli1) {
+	lobbyExpected = udpstar.Lobby{
+		Name: lobbyName,
+		Slots: []udpstar.LobbySlot{
+			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
+			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
+			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
+		},
+		State: udpstar.LobbyStateActive,
+	}
+
+	if !compareLobby(t, nil, "1-srv", *lobbySrv, lobbyExpected) {
 		return
 	}
 
-	// *** join local=1 slot=3
+	lobbyExpected = udpstar.Lobby{
+		Name: lobbyName,
+		Slots: []udpstar.LobbySlot{
+			// a client can see the only own actor tokens, so for actor 1 the token is 0
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
+			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
+			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
+		},
+		State: udpstar.LobbyStateActive,
+	}
+
+	if !compareLobby(t, nil, "1-cli1", *lobbyCli1, lobbyExpected) {
+		return
+	}
+
+	// *** step "2": join local=1 slot=3, join remote client=2 actor=3 slot=2
 
 	srv.JoinLocal(lobbyToken, actor4Token, 3, 1, actor4Name)
+	cli2.Join(actor3Token, 2, actor3Name)
 
 	time.Sleep(pause)
 	w.Wait()
 
-	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
-	lobbyCli2 = cli1.Get(versionNone)
+	lobbyCli1 = cli1.Get(versionNone)
+	lobbyCli2 = cli2.Get(versionNone)
 
-	if !compareLobby(t, "2", *lobbySrv, *lobbyCli2) {
+	lobbyExpected = udpstar.Lobby{
+		Name: lobbyName,
+		Slots: []udpstar.LobbySlot{
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor3Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+		},
+		State: udpstar.LobbyStateReady,
+	}
+
+	if !compareLobby(t, nil, "2-cli1", *lobbyCli1, lobbyExpected) {
 		return
 	}
 
-	// *** rename
+	lobbyExpected = udpstar.Lobby{
+		Name: lobbyName,
+		Slots: []udpstar.LobbySlot{
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor2Name},
+			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+		},
+		State: udpstar.LobbyStateReady,
+	}
+
+	if !compareLobby(t, nil, "2-cli2", *lobbyCli2, lobbyExpected) {
+		return
+	}
+
+	// *** step "3": rename
 
 	const lobbyNameNew = lobbyName + "-1"
 
@@ -147,55 +207,65 @@ func TestLobby(t *testing.T) {
 	w.Wait()
 
 	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
+
+	lobbyExpected = udpstar.Lobby{
+		Name: lobbyNameNew,
+		Slots: []udpstar.LobbySlot{
+			// a client can see the only own actor tokens, so for actors 1 and 4 the token is 0
+			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
+			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
+			{StoryToken: story2Token, ActorToken: actor4Token, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+		},
+		State: udpstar.LobbyStateReady,
+	}
+
+	if !compareLobby(t, nil, "3-srv", *lobbySrv, lobbyExpected) {
+		return
+	}
+
 	lobbyCli1 = cli1.Get(versionNone)
 
-	if !compareLobby(t, "3", *lobbySrv, *lobbyCli1) {
+	lobbyExpected = udpstar.Lobby{
+		Name: lobbyNameNew,
+		Slots: []udpstar.LobbySlot{
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor3Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+		},
+		State: udpstar.LobbyStateReady,
+	}
+
+	if !compareLobby(t, nil, "3-cli1", *lobbyCli1, lobbyExpected) {
 		return
 	}
 
-	if lobbySrv.Name != lobbyNameNew {
-		t.Errorf("lobby name doesn't match. want=%s got%s", lobbyNameNew, lobbySrv.Name)
-		return
-	}
-
-	// *** join remote client=2 actor=3 slot=2
-
-	cli1.Join(actor3Token, 2, actor3Name)
-
-	time.Sleep(pause)
-	w.Wait()
-
-	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
-	lobbyCli2 = cli1.Get(versionNone)
-
-	if !compareLobby(t, "4", *lobbySrv, *lobbyCli2) {
-		return
-	}
-
-	// *** leave remote client=1 actor=2 slot=1
+	// *** step "4": leave remote client=1 actor=2 slot=1
 
 	cli1.Leave(actor2Token)
 
 	time.Sleep(pause)
 	w.Wait()
 
-	lobbyCli2 = cli1.Get(versionNone)
+	lobbyCli2 = cli2.Get(versionNone)
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
-			{StoryToken: story1Token, Availability: udpstar.SlotAvailable, Name: ""},
-			{StoryToken: story2Token, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotAvailable, Name: ""},
+			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
 		},
+		State: udpstar.LobbyStateActive,
 	}
 
-	if !compareLobby(t, "5", *lobbyCli2, lobbyExpected) {
+	if !compareLobby(t, nil, "4-cli2", *lobbyCli2, lobbyExpected) {
 		return
 	}
 
-	// *** rejoin remote client=1 actor=2 slot=1
+	// *** step "5": rejoin remote client=1 actor=2 slot=1
 
 	cli1.Join(actor2Token, 1, actor2Name)
 
@@ -207,14 +277,15 @@ func TestLobby(t *testing.T) {
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
-			{StoryToken: story1Token, Availability: udpstar.SlotRemote, Name: actor2Name},
-			{StoryToken: story2Token, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
+			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
+			{StoryToken: story2Token, ActorToken: actor4Token, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
 		},
+		State: udpstar.LobbyStateReady,
 	}
 
-	if !compareLobby(t, "6", *lobbySrv, lobbyExpected) {
+	if !compareLobby(t, nil, "5-srv", *lobbySrv, lobbyExpected) {
 		return
 	}
 
@@ -222,17 +293,28 @@ func TestLobby(t *testing.T) {
 	wgNodes.Wait()
 }
 
-func compareLobby(t *testing.T, key string, a, b udpstar.Lobby) (equals bool) {
+func compareLobby(t *testing.T, l *slog.Logger, key string, a, b udpstar.Lobby) (equals bool) {
 	equals = true
+
 	if a.Name != b.Name {
-		t.Errorf("lobby name doesn't match: key=%s a=%v b=%v",
-			key, a.Name, b.Name)
+		if t != nil {
+			t.Errorf("lobby name doesn't match: key=%s a=%v b=%v",
+				key, a.Name, b.Name)
+		}
+		if l != nil {
+			l.Debug("lobby name doesn't match", "key", key, "a", a.Name, "b", b.Name)
+		}
 		equals = false
 	}
 
 	if len(a.Slots) != len(b.Slots) {
-		t.Errorf("lobby have different number of slots: key=%s a=%d b=%d",
-			key, len(a.Slots), len(b.Slots))
+		if t != nil {
+			t.Errorf("lobby have different number of slots: key=%s a=%d b=%d",
+				key, len(a.Slots), len(b.Slots))
+		}
+		if l != nil {
+			l.Debug("lobby have different number of slots", "key", key, "a", len(a.Slots), "b", len(b.Slots))
+		}
 		equals = false
 		return
 	}
@@ -243,10 +325,27 @@ func compareLobby(t *testing.T, key string, a, b udpstar.Lobby) (equals bool) {
 		bs := b.Slots[i]
 
 		if as != bs {
-			t.Errorf("lobby slots not equal: key=%s index=%d a=%v b=%v",
-				key, i, as, bs)
+			if t != nil {
+				t.Errorf("lobby slots not equal: key=%s index=%d a=%v b=%v",
+					key, i, as, bs)
+			}
+			if l != nil {
+				l.Debug("lobby slots not equal", "key", key, "index", i,
+					"a", as, "b", bs)
+			}
 			equals = false
 		}
+	}
+
+	if a.State != b.State {
+		if t != nil {
+			t.Errorf("lobby state doesn't match: state=%s a=%d b=%d",
+				key, a.State, b.State)
+		}
+		if l != nil {
+			l.Debug("lobby state doesn't match", "key", key, "a", a.State, "b", b.State)
+		}
+		equals = false
 	}
 
 	return

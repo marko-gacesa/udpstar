@@ -15,3 +15,14 @@ const (
 	SlotLocal0    SlotAvailability = 16
 	SlotRemote    SlotAvailability = 128
 )
+
+type State byte
+
+const (
+	StateActive    State = 0
+	StateReady     State = 1
+	StateStarting  State = 0x80
+	StateStarting1 State = 0x81
+	StateStarting2 State = 0x82
+	StateStarting3 State = 0x83
+)

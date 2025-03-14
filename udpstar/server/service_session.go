@@ -56,6 +56,7 @@ type storyGetPackage struct {
 func newSessionService(
 	session *Session,
 	udpSender Sender,
+	clientDataMap map[message.Token]ClientData,
 	controller controller.Controller,
 	log *slog.Logger,
 ) (*sessionService, error) {
@@ -70,7 +71,8 @@ func newSessionService(
 
 	s.clients = make([]*clientService, len(session.Clients))
 	for i := range s.clients {
-		s.clients[i] = newClientService(session.Clients[i], s, udpSender, log)
+		data := clientDataMap[session.Clients[i].Token]
+		s.clients[i] = newClientService(session.Clients[i], s, udpSender, data, log)
 	}
 
 	s.stories = make([]storyData, len(session.Stories))
@@ -298,9 +300,9 @@ func (s *sessionService) updateState(ctx context.Context) *storymessage.LatencyR
 	for _, c := range s.clients {
 		state := c.GetState()
 
-		for _, actor := range c.remoteActors {
+		for i := range c.remoteActors {
 			msg.Latencies = append(msg.Latencies, storymessage.LatencyReportActor{
-				Name:    actor.Name,
+				Name:    c.remoteActors[i].Name,
 				State:   state.State,
 				Latency: state.Latency,
 			})

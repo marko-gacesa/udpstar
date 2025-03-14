@@ -17,13 +17,17 @@ import (
 // ******************************************************************************
 
 var _ interface {
+	// Start starts the session client. It's a blocking call. Cancel the context to abort it.
 	Start(ctx context.Context)
+
+	// HandleIncomingMessages handles incoming network messages intended for this client.
 	HandleIncomingMessages(data []byte)
 
 	// Quality returns the level of consistency in message processing: Average divergence of last few
 	// messages processed time when compared to the server. Ideally should be zero.
 	Quality() time.Duration
 
+	// Latencies returns network latency for all participants.
 	Latencies() udpstar.LatencyInfo
 } = (*Client)(nil)
 

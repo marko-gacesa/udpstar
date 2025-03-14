@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package server
 
@@ -8,6 +8,7 @@ import (
 	"errors"
 	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"golang.org/x/sync/errgroup"
 	"log/slog"
@@ -93,7 +94,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 
 	var msgRec udpRecorder
 
-	sessionSrv, err := newSessionService(&session, &msgRec, nil, slog.Default())
+	sessionSrv, err := newSessionService(&session, &msgRec, map[message.Token]ClientData{}, nil, slog.Default())
 	if err != nil {
 		t.Errorf("failed to create session service: %s", err.Error())
 		return
@@ -119,7 +120,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 			t.Errorf("unexpected client state: %s", statePack.State)
 		}
 
-		client1Srv.UpdateState(clientData{
+		client1Srv.UpdateState(ClientData{
 			LastMsgReceived: time.Now(),
 			Address: net.UDPAddr{
 				IP:   []byte{127, 0, 0, 1},

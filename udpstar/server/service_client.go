@@ -10,7 +10,6 @@ import (
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
-	"net"
 	"sync"
 	"time"
 )
@@ -19,7 +18,7 @@ type clientService struct {
 	Token   message.Token
 	Session *sessionService
 
-	data clientData
+	data ClientData
 
 	remoteActors []remoteActorData
 
@@ -33,12 +32,6 @@ type clientService struct {
 	stateMx sync.Mutex
 }
 
-type clientData struct {
-	LastMsgReceived time.Time
-	Address         net.UDPAddr
-	Latency         time.Duration
-}
-
 type clientStatePackage struct {
 	State   storymessage.ClientState
 	Latency time.Duration
@@ -48,6 +41,7 @@ func newClientService(
 	client Client,
 	session *sessionService,
 	udpSender Sender,
+	clientData ClientData,
 	log *slog.Logger,
 ) *clientService {
 	c := &clientService{}
@@ -55,7 +49,7 @@ func newClientService(
 	c.Token = client.Token
 	c.Session = session
 
-	c.state = storymessage.ClientStateNew
+	c.data = clientData
 
 	c.remoteActors = make([]remoteActorData, len(client.Actors))
 	for i := range c.remoteActors {
@@ -67,6 +61,8 @@ func newClientService(
 
 	c.udpSender = udpSender
 	c.log = log.With("session", session.Token, "client", client.Token)
+
+	c.state = storymessage.ClientStateNew
 
 	return c
 }
@@ -122,7 +118,7 @@ func (c *clientService) Send(msg storymessage.ServerMessage) {
 	}
 }
 
-func (c *clientService) UpdateState(msgInfo clientData) {
+func (c *clientService) UpdateState(msgInfo ClientData) {
 	c.stateMx.Lock()
 
 	c.data = msgInfo

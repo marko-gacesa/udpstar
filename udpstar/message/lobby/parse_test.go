@@ -55,6 +55,12 @@ func TestParseClient(t *testing.T) {
 func TestSerializeServer(t *testing.T) {
 	story1 := message.RandomToken()
 	story2 := message.RandomToken()
+	actor1 := message.RandomToken()
+	actor2 := message.RandomToken()
+	actor3 := message.RandomToken()
+	actor4 := message.RandomToken()
+	actor5 := message.RandomToken()
+	actor6 := message.RandomToken()
 
 	tests := []ServerMessage{
 		&Setup{
@@ -65,41 +71,48 @@ func TestSerializeServer(t *testing.T) {
 			Slots: []Slot{
 				{
 					StoryToken:   story1,
+					ActorToken:   actor1,
 					Availability: SlotLocal0,
 					Name:         "test1",
 					Latency:      0,
 				},
 				{
 					StoryToken:   story1,
+					ActorToken:   actor2,
 					Availability: SlotRemote,
 					Name:         "test2",
 					Latency:      17 * time.Millisecond,
 				},
 				{
 					StoryToken:   story1,
+					ActorToken:   actor3,
 					Availability: SlotRemote,
 					Name:         "test3",
 					Latency:      45 * time.Millisecond,
 				},
 				{
 					StoryToken:   story2,
+					ActorToken:   actor4,
 					Availability: SlotRemote,
 					Name:         "test4",
 					Latency:      23 * time.Millisecond,
 				},
 				{
 					StoryToken:   story2,
+					ActorToken:   actor5,
 					Availability: SlotAvailable,
 					Name:         "",
 					Latency:      0,
 				},
 				{
 					StoryToken:   story2,
+					ActorToken:   actor6,
 					Availability: SlotRemote,
 					Name:         "test6",
 					Latency:      17 * time.Microsecond,
 				},
 			},
+			State: StateReady,
 		},
 	}
 

@@ -23,15 +23,18 @@ var _ interface {
 	Start(ctx context.Context)
 	HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte
 
-	StartSession(ctx context.Context, session *Session, controller controller.Controller) error
-
-	StartLobby(ctx context.Context, lobbySetup *LobbySetup) error
-	UpgradeLobby(
+	StartSession(
 		ctx context.Context,
-		lobbyToken message.Token,
-		attachChannels func(session *Session),
+		session *Session,
+		clientData map[message.Token]ClientData,
 		controller controller.Controller,
 	) error
+
+	StartLobby(ctx context.Context, lobbySetup *LobbySetup) error
+	FinishLobby(
+		ctx context.Context,
+		lobbyToken message.Token,
+	) (*Session, map[message.Token]ClientData, error)
 
 	GetLobby(lobbyToken message.Token, version int) (*udpstar.Lobby, error)
 
@@ -150,6 +153,92 @@ func (s *Server) HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte {
 	return responseBuffer
 }
 
+// StartSession starts a new session. It makes sure that the new session doesn't share the token with an existing lobby.
+func (s *Server) StartSession(
+	ctx context.Context,
+	session *Session,
+	clientData map[message.Token]ClientData,
+	controller controller.Controller,
+) error {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	_, ok := s.lobbyMap[session.Token]
+	if ok {
+		return ErrDuplicateSession
+	}
+
+	return s.startSession(ctx, session, clientData, controller)
+}
+
+func (s *Server) startSession(
+	ctx context.Context,
+	session *Session,
+	clientDataMap map[message.Token]ClientData,
+	controller controller.Controller,
+) error {
+	var ok bool
+
+	for i := range session.Clients {
+		_, ok = s.clientMap[session.Clients[i].Token]
+		if ok {
+			return ErrDuplicateClient
+		}
+	}
+	_, ok = s.sessionMap[session.Token]
+	if ok {
+		return ErrDuplicateSession
+	}
+
+	if clientDataMap == nil {
+		clientDataMap = map[message.Token]ClientData{}
+	}
+
+	sessionSrv, err := newSessionService(session, s.sender, clientDataMap, controller, s.log)
+	if err != nil {
+		return err
+	}
+
+	ctx, cancelFn := context.WithCancel(ctx)
+
+	for i := range session.Clients {
+		s.clientMap[session.Clients[i].Token] = sessionSrv.clients[i]
+	}
+
+	s.sessionMap[session.Token] = sessionEntry{
+		srv:      sessionSrv,
+		cancelFn: cancelFn,
+	}
+
+	s.servicesWG.Add(1)
+	go func() {
+		defer s.servicesWG.Done()
+
+		err := sessionSrv.Start(ctx)
+		if err == nil || errors.Is(err, context.Canceled) {
+			s.log.Info("session stopped",
+				"session", session.Token)
+		} else {
+			s.log.Error("session aborted",
+				"session", session.Token,
+				"err", err.Error())
+		}
+
+		cancelFn()
+
+		s.mx.Lock()
+		defer s.mx.Unlock()
+
+		for i := range sessionSrv.clients {
+			delete(s.clientMap, sessionSrv.clients[i].Token)
+		}
+
+		delete(s.sessionMap, sessionSrv.Token)
+	}()
+
+	return nil
+}
+
 // StartLobby starts lobby. A gathering area for the actors before the session starts.
 // To cancel the lobby, cancel the provided context.
 func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
@@ -201,127 +290,82 @@ func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
 	return nil
 }
 
-// StartSession starts a new session. It makes sure that the new session doesn't share the token with an existing lobby.
-func (s *Server) StartSession(ctx context.Context, session *Session, controller controller.Controller) error {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-
-	_, ok := s.lobbyMap[session.Token]
-	if ok {
-		return ErrDuplicateSession
-	}
-
-	return s.startSession(ctx, session, controller)
-}
-
-func (s *Server) startSession(ctx context.Context, session *Session, controller controller.Controller) error {
-	var ok bool
-
-	for i := range session.Clients {
-		_, ok = s.clientMap[session.Clients[i].Token]
-		if ok {
-			return ErrDuplicateClient
-		}
-	}
-	_, ok = s.sessionMap[session.Token]
-	if ok {
-		return ErrDuplicateSession
-	}
-
-	sessionSrv, err := newSessionService(session, s.sender, controller, s.log)
-	if err != nil {
-		return err
-	}
-
-	ctx, cancelFn := context.WithCancel(ctx)
-
-	for i := range session.Clients {
-		s.clientMap[session.Clients[i].Token] = sessionSrv.clients[i]
-	}
-
-	s.sessionMap[session.Token] = sessionEntry{
-		srv:      sessionSrv,
-		cancelFn: cancelFn,
-	}
-
-	s.servicesWG.Add(1)
-	go func() {
-		defer s.servicesWG.Done()
-
-		err := sessionSrv.Start(ctx)
-		if err == nil || errors.Is(err, context.Canceled) {
-			s.log.Info("session stopped",
-				"session", session.Token)
-		} else {
-			s.log.Error("session aborted",
-				"session", session.Token,
-				"err", err.Error())
-		}
-
-		cancelFn()
-
-		s.mx.Lock()
-		defer s.mx.Unlock()
-
-		for i := range sessionSrv.clients {
-			delete(s.clientMap, sessionSrv.clients[i].Token)
-		}
-
-		delete(s.sessionMap, sessionSrv.Token)
-	}()
-
-	return nil
-}
-
-func (s *Server) UpgradeLobby(
+func (s *Server) FinishLobby(
 	ctx context.Context,
 	lobbyToken message.Token,
-	attachChannels func(session *Session),
-	controller controller.Controller,
-) error {
+) (*Session, map[message.Token]ClientData, error) {
 	s.mx.Lock()
-	defer s.mx.Unlock()
-
 	lobby, ok := s.lobbyMap[lobbyToken]
+	s.mx.Unlock()
 	if !ok {
-		return ErrUnknownLobby
+		return nil, nil, ErrUnknownLobby
 	}
 
-	resultCh := make(chan lobbyGetResp, 1)
-	lobby.srv.getRaw(resultCh)
+	lobbySrv := lobby.srv
 
-	response, ok := <-resultCh
+	resultCh := make(chan udpstar.Lobby, 1)
+	lobbySrv.Get(-1, resultCh)
+
+	responseGet, ok := <-resultCh
 	if !ok {
-		return ErrUnknownLobby
+		return nil, nil, ErrUnknownLobby
 	}
 
-	session, ready := lobbyToSession(lobbyToken, response.slots)
-	if !ready {
-		return ErrLobbyNotReady
+	if responseGet.State != lobbymessage.StateReady {
+		return nil, nil, ErrLobbyNotReady
 	}
 
-	attachChannels(&session)
-	err := s.startSession(ctx, &session, controller)
-	if err != nil {
-		return err
+	expectedVersion := responseGet.Version
+
+	var responseFinish lobbyFinishResp
+	for state := lobbymessage.StateStarting3; state >= lobbymessage.StateStarting; state-- {
+		respSetStateCh := make(chan lobbyFinishResp)
+		lobbySrv.Finish(state, expectedVersion, respSetStateCh)
+
+		responseFinish, ok = <-respSetStateCh
+		if !ok {
+			return nil, nil, ErrUnknownLobby
+		}
+		if responseFinish.err != nil {
+			return nil, nil, responseFinish.err
+		}
+
+		if state == lobbymessage.StateStarting {
+			break
+		}
+
+		expectedVersion = responseFinish.version + 1
+
+		t := time.NewTimer(time.Second)
+
+		select {
+		case <-ctx.Done():
+			return nil, nil, ctx.Err()
+		case <-lobby.srv.doneCh:
+			return nil, nil, ErrUnknownLobby
+		case <-t.C:
+		}
 	}
 
+	session := lobbyToSession(lobbyToken, responseFinish.slots)
+
+	clientDataMap := make(map[message.Token]ClientData, len(responseFinish.slots))
+	for _, slot := range responseFinish.slots {
+		if slot.IsRemote {
+			clientDataMap[slot.ClientToken] = ClientData{
+				LastMsgReceived: slot.LastContact,
+				Address:         slot.Addr,
+				Latency:         slot.Latency,
+			}
+		}
+	}
+
+	s.mx.Lock()
 	lobby.cancelFn()
 	delete(s.lobbyMap, lobbyToken)
+	s.mx.Unlock()
 
-	return nil
-}
-
-func (s *Server) getLobby(lobbyToken message.Token) *lobbyService {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-
-	lobby, ok := s.lobbyMap[lobbyToken]
-	if !ok {
-		return nil
-	}
-
-	return lobby.srv
+	return &session, clientDataMap, nil
 }
 
 func (s *Server) GetLobby(lobbyToken message.Token, version int) (*udpstar.Lobby, error) {
@@ -335,7 +379,7 @@ func (s *Server) GetLobby(lobbyToken message.Token, version int) (*udpstar.Lobby
 
 	response, ok := <-resultCh
 	if !ok {
-		return nil, nil
+		return nil, ErrUnknownLobby
 	}
 
 	return &response, nil
@@ -369,7 +413,7 @@ func (s *Server) RenameLobby(lobbyToken message.Token, name string) error {
 		return ErrUnknownLobby
 	}
 
-	lobbySrv.Rename(name)
+	lobbySrv.ChangeName(name)
 
 	return nil
 }
@@ -383,6 +427,18 @@ func (s *Server) Evict(lobbyToken, actorToken message.Token) error {
 	lobbySrv.Evict(actorToken)
 
 	return nil
+}
+
+func (s *Server) getLobby(lobbyToken message.Token) *lobbyService {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+
+	lobby, ok := s.lobbyMap[lobbyToken]
+	if !ok {
+		return nil
+	}
+
+	return lobby.srv
 }
 
 func (s *Server) handlePingMessage(msgPing *pingmessage.Ping) []byte {
@@ -414,7 +470,7 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 	now := time.Now()
 
 	// update client's address and latency
-	client.UpdateState(clientData{
+	client.UpdateState(ClientData{
 		LastMsgReceived: now,
 		Address:         addr,
 		Latency:         msg.GetLatency(),

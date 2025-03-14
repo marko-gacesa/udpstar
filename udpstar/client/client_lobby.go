@@ -13,18 +13,27 @@ import (
 	"log/slog"
 	"slices"
 	"sync"
+	"sync/atomic"
+	"time"
 )
 
 // ******************************************************************************
 
 var _ interface {
-	Start(ctx context.Context)
+	// Start starts the lobby client. It's a blocking call. Cancel the context to abort it.
+	Start(ctx context.Context) *Session
+
+	// HandleIncomingMessages handles incoming network messages intended for this client.
 	HandleIncomingMessages(data []byte)
 
+	// Join sends a join request message to the server.
 	Join(actorToken message.Token, slot byte, name string)
+	// Leave sends a leave request message to the server for a single actor.
 	Leave(actorToken message.Token)
+	// LeaveAll sends a leave-all message to the server. That's a leave request for each actor from this client.
 	LeaveAll()
 
+	// Get returns the lobby.
 	Get(version int) *udpstar.Lobby
 } = (*Lobby)(nil)
 
@@ -42,6 +51,8 @@ type Lobby struct {
 	pingCh    chan pingmessage.Ping
 	commandCh chan lobbyCommandProcessor
 	doneCh    chan struct{}
+
+	finishTimer *time.Timer
 
 	dataMx sync.Mutex
 	data   udpstar.Lobby
@@ -63,6 +74,7 @@ func NewLobby(
 		pingCh:      make(chan pingmessage.Ping),
 		commandCh:   make(chan lobbyCommandProcessor),
 		doneCh:      make(chan struct{}),
+		finishTimer: time.NewTimer(time.Hour),
 		log:         slog.Default(),
 	}
 	for _, opt := range opts {
@@ -72,6 +84,8 @@ func NewLobby(
 	c.log = c.log.With("lobby", c.lobbyToken, "client", c.clientToken)
 
 	c.pingSrv = newPingService(c.pingCh)
+
+	c.finishTimer.Stop()
 
 	return c, nil
 }
@@ -84,9 +98,15 @@ var WithLobbyLogger = func(log *slog.Logger) func(*Lobby) {
 	}
 }
 
-func (c *Lobby) Start(ctx context.Context) {
+func (c *Lobby) Start(ctx context.Context) *Session {
+	finished := &atomic.Bool{}
+
 	go func() {
-		<-ctx.Done()
+		select {
+		case <-c.finishTimer.C:
+			finished.Store(true)
+		case <-ctx.Done():
+		}
 		close(c.doneCh)
 	}()
 
@@ -164,6 +184,41 @@ func (c *Lobby) Start(ctx context.Context) {
 	close(c.sendCh)
 
 	c.log.Info("lobby client stopped")
+
+	c.dataMx.Lock()
+	defer c.dataMx.Unlock()
+
+	if c.data.State < lobbymessage.StateStarting || !finished.Load() {
+		return nil
+	}
+
+	result := new(Session)
+	result.Token = c.lobbyToken
+	result.ClientToken = c.clientToken
+	result.Stories = make([]Story, 0)
+	result.Actors = make([]Actor, 0)
+
+	setStory := map[message.Token]struct{}{}
+	for i := range c.data.Slots {
+		storyToken := c.data.Slots[i].StoryToken
+		_, ok := setStory[storyToken]
+		if !ok {
+			result.Stories = append(result.Stories, Story{
+				StoryInfo: StoryInfo{Token: storyToken},
+				Channel:   nil,
+			})
+		}
+
+		if actorToken := c.data.Slots[i].ActorToken; actorToken != 0 {
+			result.Actors = append(result.Actors, Actor{
+				Token:   actorToken,
+				Story:   StoryInfo{Token: storyToken},
+				InputCh: nil,
+			})
+		}
+	}
+
+	return result
 }
 
 func (c *Lobby) HandleIncomingMessages(data []byte) {
@@ -193,7 +248,7 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 			c.log.Warn("received unrecognized message")
 		}
 
-		c.assign(msgSetup)
+		c.updateData(msgSetup)
 
 		return
 	}
@@ -226,11 +281,12 @@ func (c *Lobby) Get(version int) *udpstar.Lobby {
 	result.Version = c.data.Version
 	result.Name = c.data.Name
 	result.Slots = slices.Clone(c.data.Slots)
+	result.State = c.data.State
 
 	return result
 }
 
-func (c *Lobby) assign(msg *lobbymessage.Setup) {
+func (c *Lobby) updateData(msg *lobbymessage.Setup) {
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
 
@@ -246,18 +302,37 @@ func (c *Lobby) assign(msg *lobbymessage.Setup) {
 		changed = true
 	}
 	for i := range msg.Slots {
-		changed = changed || c.data.Slots[i].StoryToken != msg.Slots[i].StoryToken ||
+		changed = changed ||
+			c.data.Slots[i].StoryToken != msg.Slots[i].StoryToken ||
+			c.data.Slots[i].ActorToken != msg.Slots[i].ActorToken ||
 			c.data.Slots[i].Availability != msg.Slots[i].Availability ||
 			c.data.Slots[i].Name != msg.Slots[i].Name ||
 			c.data.Slots[i].Latency != msg.Slots[i].Latency
 		c.data.Slots[i].StoryToken = msg.Slots[i].StoryToken
+		c.data.Slots[i].ActorToken = msg.Slots[i].ActorToken
 		c.data.Slots[i].Availability = msg.Slots[i].Availability
 		c.data.Slots[i].Name = msg.Slots[i].Name
 		c.data.Slots[i].Latency = msg.Slots[i].Latency
 	}
 
+	if c.data.State != msg.State {
+		c.data.State = msg.State
+		changed = true
+	}
+
 	if changed {
 		c.data.Version++
+	}
+
+	c.finishTimer.Stop()
+	select {
+	case <-c.finishTimer.C:
+	default:
+	}
+
+	if c.data.State >= lobbymessage.StateStarting && changed {
+		duration := time.Duration(c.data.State-lobbymessage.StateStarting) * time.Second
+		c.finishTimer.Reset(duration)
 	}
 }
 

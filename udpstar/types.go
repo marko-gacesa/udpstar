@@ -9,10 +9,22 @@ import (
 	"time"
 )
 
+type LobbyState = lobbymessage.State
+
+const (
+	LobbyStateActive    LobbyState = lobbymessage.StateActive
+	LobbyStateReady     LobbyState = lobbymessage.StateReady
+	LobbyStateStarting  LobbyState = lobbymessage.StateStarting
+	LobbyStateStarting1 LobbyState = lobbymessage.StateStarting1
+	LobbyStateStarting2 LobbyState = lobbymessage.StateStarting2
+	LobbyStateStarting3 LobbyState = lobbymessage.StateStarting3
+)
+
 type Lobby struct {
 	Version int
 	Name    string
 	Slots   []LobbySlot
+	State   LobbyState
 }
 
 type Availability = lobbymessage.SlotAvailability
@@ -25,6 +37,7 @@ const (
 
 type LobbySlot struct {
 	StoryToken   message.Token
+	ActorToken   message.Token
 	Availability Availability
 	Name         string
 	Latency      time.Duration

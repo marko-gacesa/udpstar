@@ -33,7 +33,7 @@ func TestServer(t *testing.T) {
 		defer cancelCtx1()
 
 		session1 := newSimpleSession(1, 2, 3, 4)
-		err = server.StartSession(ctx1, session1, nil)
+		err = server.StartSession(ctx1, session1, nil, nil)
 		if err != nil {
 			t.Errorf("failed to start session 1")
 		}
@@ -42,7 +42,7 @@ func TestServer(t *testing.T) {
 		defer cancelCtx2()
 
 		session2 := newSimpleSession(5, 6, 7, 8)
-		err = server.StartSession(ctx2, session2, nil)
+		err = server.StartSession(ctx2, session2, nil, nil)
 		if err != nil {
 			t.Errorf("failed to start session 2")
 		}

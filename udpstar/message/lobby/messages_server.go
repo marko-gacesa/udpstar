@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -15,10 +15,12 @@ type Setup struct {
 	HeaderServer
 	Name  string
 	Slots []Slot
+	State State
 }
 
 type Slot struct {
 	StoryToken   message.Token
+	ActorToken   message.Token
 	Availability SlotAvailability
 	Name         string
 	Latency      time.Duration
@@ -29,10 +31,11 @@ var _ ServerMessage = (*Setup)(nil)
 func (m *Setup) Size() int {
 	size := sizeServerBase +
 		1 + len(m.Name) +
-		1 // len slots
+		1 + // len slots
+		1 // state
 
 	for i := range m.Slots {
-		size += message.SizeOfToken + 1 + 1 + len(m.Slots[i].Name) + 8
+		size += message.SizeOfToken + message.SizeOfToken + 1 + 1 + len(m.Slots[i].Name) + 8
 	}
 
 	return size
@@ -48,10 +51,13 @@ func (m *Setup) Put(buf []byte) int {
 	s.Put8(byte(len(m.Slots)))
 	for i := range m.Slots {
 		s.PutToken(m.Slots[i].StoryToken)
+		s.PutToken(m.Slots[i].ActorToken)
 		s.Put8(byte(m.Slots[i].Availability))
 		s.PutStr(m.Slots[i].Name)
 		s.PutDuration(m.Slots[i].Latency)
 	}
+
+	s.Put8(byte(m.State))
 
 	return s.Len()
 }
@@ -69,10 +75,13 @@ func (m *Setup) Get(buf []byte) int {
 	m.Slots = make([]Slot, l)
 	for i := byte(0); i < l; i++ {
 		s.GetToken(&m.Slots[i].StoryToken)
+		s.GetToken(&m.Slots[i].ActorToken)
 		s.Get8((*byte)(&m.Slots[i].Availability))
 		s.GetStr(&m.Slots[i].Name)
 		s.GetDuration(&m.Slots[i].Latency)
 	}
+
+	s.Get8((*byte)(&m.State))
 
 	return s.Len()
 }

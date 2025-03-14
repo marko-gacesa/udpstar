@@ -7,6 +7,7 @@ import (
 	"errors"
 	"github.com/marko-gacesa/udpstar/udpstar/client"
 	"github.com/marko-gacesa/udpstar/udpstar/server"
+	"log/slog"
 	"net"
 	"sync"
 	"testing"
@@ -19,9 +20,11 @@ var _ interface {
 	Wait()
 } = (*Network)(nil)
 
-func NewNetwork(t *testing.T) *Network {
+func NewNetwork(t *testing.T, broadcast net.IP, logger *slog.Logger) *Network {
 	w := &Network{
 		t:          t,
+		broadcast:  broadcast,
+		logger:     logger,
 		clientMap:  make(map[byte]*nodeClient),
 		gatekeeper: gatekeeper{},
 	}
@@ -44,6 +47,8 @@ type NetworkServer interface {
 // Network simulates network layer.
 type Network struct {
 	t          *testing.T
+	broadcast  net.IP
+	logger     *slog.Logger
 	server     *nodeServer
 	clientMap  map[byte]*nodeClient
 	gatekeeper gatekeeper
@@ -87,7 +92,9 @@ func (n *nodeServer) SetHandler(handler func(payload []byte, addr net.UDPAddr) [
 func (n *nodeServer) Send(payload []byte, addr net.UDPAddr) error {
 	payload = bytes.Clone(payload)
 
-	if addr.IP == nil {
+	if bytes.Equal(addr.IP, n.ip) {
+		n.w.logger.Debug("network send: server->all", "to", addr.IP)
+
 		for _, cli := range n.w.clientMap {
 			n.w.gatekeeper.enter()
 			go func(cli *nodeClient) {
@@ -98,12 +105,19 @@ func (n *nodeServer) Send(payload []byte, addr net.UDPAddr) error {
 		return nil
 	}
 
+	if len(addr.IP) == 0 {
+		n.w.t.Error("server sends message to nil address")
+		return errors.New("unknown recipient")
+	}
+
 	toIdx := addr.IP[len(addr.IP)-1]
 	cli, ok := n.w.clientMap[toIdx]
 	if !ok {
 		n.w.t.Errorf("server sends message to unknown recipient: toIdx=%d", toIdx)
 		return errors.New("unknown recipient")
 	}
+
+	n.w.logger.Debug("network send: server->client", "to", addr.IP)
 
 	n.w.gatekeeper.enter()
 	go func() {
@@ -132,6 +146,8 @@ func (n *nodeClient) SetHandler(handler func(payload []byte)) {
 
 func (n *nodeClient) Send(payload []byte) error {
 	payload = bytes.Clone(payload)
+
+	n.w.logger.Debug("network send: client->server", "from", n.ip)
 
 	n.w.gatekeeper.enter()
 	go func() {
