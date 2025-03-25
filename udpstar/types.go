@@ -63,3 +63,17 @@ type LatencyActor struct {
 	State   LatencyState
 	Latency time.Duration
 }
+
+type LobbyListenerState byte
+
+const (
+	LobbyListenerStateFresh  LobbyListenerState = 0
+	LobbyListenerStateRecent LobbyListenerState = 1
+	LobbyListenerStateOld    LobbyListenerState = 2
+	LobbyListenerStateStale  LobbyListenerState = 3
+)
+
+type LobbyListenerInfo struct {
+	Lobby Lobby
+	State LobbyListenerState
+}

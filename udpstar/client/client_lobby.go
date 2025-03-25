@@ -21,6 +21,7 @@ import (
 
 var _ interface {
 	// Start starts the lobby client. It's a blocking call. Cancel the context to abort it.
+	// If the lobby is successfully finished, it will return a Session.
 	Start(ctx context.Context) *Session
 
 	// HandleIncomingMessages handles incoming network messages intended for this client.
@@ -33,8 +34,9 @@ var _ interface {
 	// LeaveAll sends a leave-all message to the server. That's a leave request for each actor from this client.
 	LeaveAll()
 
-	// Get returns the lobby.
-	Get(version int) *udpstar.Lobby
+	// Get returns the lobby data and the age of that data.
+	// The age will be returned even if the version matches (and the lobby is nil).
+	Get(version int) (*udpstar.Lobby, time.Duration)
 } = (*Lobby)(nil)
 
 //******************************************************************************
@@ -54,8 +56,9 @@ type Lobby struct {
 
 	finishTimer *time.Timer
 
-	dataMx sync.Mutex
-	data   udpstar.Lobby
+	dataMx   sync.Mutex
+	data     udpstar.Lobby
+	dataTime time.Time
 
 	log *slog.Logger
 }
@@ -75,6 +78,7 @@ func NewLobby(
 		commandCh:   make(chan lobbyCommandProcessor),
 		doneCh:      make(chan struct{}),
 		finishTimer: time.NewTimer(time.Hour),
+		dataTime:    time.Now(),
 		log:         slog.Default(),
 	}
 	for _, opt := range opts {
@@ -268,12 +272,16 @@ func (c *Lobby) LeaveAll() {
 	c.sendCommand(lobbyLeaveReq{ActorToken: 0})
 }
 
-func (c *Lobby) Get(version int) *udpstar.Lobby {
+// Get returns the lobby data and the age of that data.
+// The age will be returned even if the version matches (and the lobby is nil).
+func (c *Lobby) Get(version int) (*udpstar.Lobby, time.Duration) {
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
 
+	age := time.Since(c.dataTime)
+
 	if version == c.data.Version {
-		return nil
+		return nil, age
 	}
 
 	result := new(udpstar.Lobby)
@@ -283,42 +291,16 @@ func (c *Lobby) Get(version int) *udpstar.Lobby {
 	result.Slots = slices.Clone(c.data.Slots)
 	result.State = c.data.State
 
-	return result
+	return result, age
 }
 
 func (c *Lobby) updateData(msg *lobbymessage.Setup) {
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
 
-	var changed bool
-	if c.data.Name != msg.Name {
-		changed = true
-		c.data.Name = msg.Name
-	}
+	c.dataTime = time.Now()
 
-	n := len(msg.Slots)
-	if len(c.data.Slots) != n {
-		c.data.Slots = make([]udpstar.LobbySlot, n)
-		changed = true
-	}
-	for i := range msg.Slots {
-		changed = changed ||
-			c.data.Slots[i].StoryToken != msg.Slots[i].StoryToken ||
-			c.data.Slots[i].ActorToken != msg.Slots[i].ActorToken ||
-			c.data.Slots[i].Availability != msg.Slots[i].Availability ||
-			c.data.Slots[i].Name != msg.Slots[i].Name ||
-			c.data.Slots[i].Latency != msg.Slots[i].Latency
-		c.data.Slots[i].StoryToken = msg.Slots[i].StoryToken
-		c.data.Slots[i].ActorToken = msg.Slots[i].ActorToken
-		c.data.Slots[i].Availability = msg.Slots[i].Availability
-		c.data.Slots[i].Name = msg.Slots[i].Name
-		c.data.Slots[i].Latency = msg.Slots[i].Latency
-	}
-
-	if c.data.State != msg.State {
-		c.data.State = msg.State
-		changed = true
-	}
+	changed := updateLobby(&c.data, msg)
 
 	if changed {
 		c.data.Version++
@@ -384,4 +366,37 @@ func (r lobbyLeaveReq) process(c *Lobby) {
 	case <-c.doneCh:
 	case c.sendCh <- &msg:
 	}
+}
+
+func updateLobby(data *udpstar.Lobby, msg *lobbymessage.Setup) (changed bool) {
+	if data.Name != msg.Name {
+		changed = true
+		data.Name = msg.Name
+	}
+
+	n := len(msg.Slots)
+	if len(data.Slots) != n {
+		data.Slots = make([]udpstar.LobbySlot, n)
+		changed = true
+	}
+	for i := range msg.Slots {
+		changed = changed ||
+			data.Slots[i].StoryToken != msg.Slots[i].StoryToken ||
+			data.Slots[i].ActorToken != msg.Slots[i].ActorToken ||
+			data.Slots[i].Availability != msg.Slots[i].Availability ||
+			data.Slots[i].Name != msg.Slots[i].Name ||
+			data.Slots[i].Latency != msg.Slots[i].Latency
+		data.Slots[i].StoryToken = msg.Slots[i].StoryToken
+		data.Slots[i].ActorToken = msg.Slots[i].ActorToken
+		data.Slots[i].Availability = msg.Slots[i].Availability
+		data.Slots[i].Name = msg.Slots[i].Name
+		data.Slots[i].Latency = msg.Slots[i].Latency
+	}
+
+	if data.State != msg.State {
+		data.State = msg.State
+		changed = true
+	}
+
+	return
 }

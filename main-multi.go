@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package main
 
@@ -45,8 +45,8 @@ func ListenMulticast(ctx context.Context) error {
 	fmt.Printf("Begin: Listening for a multicast on %s\n", multicastAddr.String())
 	defer fmt.Printf("End: Listening for a multicast\n")
 
-	err := udp.ListenMulticast(ctx, multicastAddr, func(addr *net.UDPAddr, data []byte) {
-		fmt.Printf("Got %q from %s\n", data, addr)
+	err := udp.ListenMulticast(ctx, multicastAddr, func(addr net.UDPAddr, data []byte) {
+		fmt.Printf("Got %q from %s\n", data, addr.String())
 	})
 	if err != nil {
 		return fmt.Errorf("failed to listen to multicast: %w", err)

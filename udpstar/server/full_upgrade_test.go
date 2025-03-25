@@ -118,7 +118,7 @@ func TestUpgrade(t *testing.T) {
 	}
 
 	lobbySrv, _ := srv.GetLobby(lobbyToken, versionNone)
-	lobbyCli := cli.Get(versionNone)
+	lobbyCli, _ := cli.Get(versionNone)
 
 	srvMatch := compareLobby(t, nil, "srv-1", *lobbySrv, lobbyExpectedSrv)
 	cliMatch := compareLobby(t, nil, "cli-1", *lobbyCli, lobbyExpectedCli)

@@ -123,7 +123,7 @@ func TestLobby(t *testing.T) {
 	w.Wait()
 
 	lobbySrv, _ = srv.GetLobby(lobbyToken, versionNone)
-	lobbyCli1 = cli1.Get(versionNone)
+	lobbyCli1, _ = cli1.Get(versionNone)
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
@@ -164,8 +164,8 @@ func TestLobby(t *testing.T) {
 	time.Sleep(pause)
 	w.Wait()
 
-	lobbyCli1 = cli1.Get(versionNone)
-	lobbyCli2 = cli2.Get(versionNone)
+	lobbyCli1, _ = cli1.Get(versionNone)
+	lobbyCli2, _ = cli2.Get(versionNone)
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
@@ -224,7 +224,7 @@ func TestLobby(t *testing.T) {
 		return
 	}
 
-	lobbyCli1 = cli1.Get(versionNone)
+	lobbyCli1, _ = cli1.Get(versionNone)
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
@@ -248,7 +248,7 @@ func TestLobby(t *testing.T) {
 	time.Sleep(pause)
 	w.Wait()
 
-	lobbyCli2 = cli2.Get(versionNone)
+	lobbyCli2, _ = cli2.Get(versionNone)
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
