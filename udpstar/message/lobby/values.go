@@ -13,6 +13,9 @@ type SlotAvailability byte
 const (
 	SlotAvailable SlotAvailability = 0
 	SlotLocal0    SlotAvailability = 16
+	SlotLocal1    SlotAvailability = 17
+	SlotLocal2    SlotAvailability = 18
+	SlotLocal3    SlotAvailability = 19
 	SlotRemote    SlotAvailability = 128
 )
 

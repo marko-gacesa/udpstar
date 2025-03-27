@@ -32,6 +32,9 @@ type Availability = lobbymessage.SlotAvailability
 const (
 	SlotAvailable Availability = lobbymessage.SlotAvailable
 	SlotLocal0    Availability = lobbymessage.SlotLocal0
+	SlotLocal1    Availability = lobbymessage.SlotLocal1
+	SlotLocal2    Availability = lobbymessage.SlotLocal2
+	SlotLocal3    Availability = lobbymessage.SlotLocal3
 	SlotRemote    Availability = lobbymessage.SlotRemote
 )
 

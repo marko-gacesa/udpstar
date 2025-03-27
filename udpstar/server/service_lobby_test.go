@@ -182,9 +182,9 @@ func TestLobbyService(t *testing.T) {
 				Name:    lobbyName,
 				Slots: []udpstar.LobbySlot{
 					{StoryToken: story1, ActorToken: actor1, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
-					{StoryToken: story1, ActorToken: actor2, Availability: udpstar.SlotLocal0 + 1, Name: actor2Name, Latency: 0},
-					{StoryToken: story2, ActorToken: actor3, Availability: udpstar.SlotLocal0 + 2, Name: actor3Name, Latency: 0},
-					{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotLocal0 + 3, Name: actor4Name, Latency: 0},
+					{StoryToken: story1, ActorToken: actor2, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor3, Availability: udpstar.SlotLocal2, Name: actor3Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotLocal3, Name: actor4Name, Latency: 0},
 				},
 				State: udpstar.LobbyStateReady,
 			},
@@ -205,9 +205,9 @@ func TestLobbyService(t *testing.T) {
 				Name:    lobbyName,
 				Slots: []udpstar.LobbySlot{
 					{StoryToken: story1, ActorToken: actor1, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
-					{StoryToken: story1, ActorToken: actor2, Availability: udpstar.SlotLocal0 + 1, Name: actor2Name, Latency: 0},
+					{StoryToken: story1, ActorToken: actor2, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
 					{StoryToken: story2, ActorToken: 0, Availability: udpstar.SlotAvailable, Name: "", Latency: 0},
-					{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotLocal0 + 3, Name: actor4Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotLocal3, Name: actor4Name, Latency: 0},
 				},
 				State: udpstar.LobbyStateActive,
 			},
@@ -219,9 +219,9 @@ func TestLobbyService(t *testing.T) {
 						Name:         lobbyName,
 						Slots: []lobbymessage.Slot{
 							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotLocal0, Name: actor1Name, Latency: 0},
-							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotLocal0 + 1, Name: actor2Name, Latency: 0},
+							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotLocal1, Name: actor2Name, Latency: 0},
 							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotAvailable, Name: "", Latency: 0},
-							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotLocal0 + 3, Name: actor4Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotLocal3, Name: actor4Name, Latency: 0},
 						},
 						State: lobbymessage.StateActive,
 					},
@@ -261,7 +261,7 @@ func TestLobbyService(t *testing.T) {
 				Slots: []udpstar.LobbySlot{
 					{StoryToken: story1, ActorToken: actor1, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
 					{StoryToken: story1, ActorToken: actor2, Availability: udpstar.SlotRemote, Name: actor2Name, Latency: 10 * time.Microsecond},
-					{StoryToken: story2, ActorToken: actor3, Availability: udpstar.SlotLocal0 + 1, Name: actor3Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor3, Availability: udpstar.SlotLocal1, Name: actor3Name, Latency: 0},
 					{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotRemote, Name: actor4Name, Latency: 20 * time.Microsecond},
 				},
 				State: udpstar.LobbyStateReady,
@@ -275,7 +275,7 @@ func TestLobbyService(t *testing.T) {
 						Slots: []lobbymessage.Slot{
 							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotLocal0, Name: actor1Name, Latency: 0},
 							{StoryToken: story1, ActorToken: actor2, Availability: lobbymessage.SlotRemote, Name: actor2Name, Latency: 10 * time.Microsecond},
-							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotLocal0 + 1, Name: actor3Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotLocal1, Name: actor3Name, Latency: 0},
 							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotRemote, Name: actor4Name, Latency: 20 * time.Microsecond},
 						},
 						State: lobbymessage.StateReady,
@@ -289,7 +289,7 @@ func TestLobbyService(t *testing.T) {
 						Slots: []lobbymessage.Slot{
 							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotLocal0, Name: actor1Name, Latency: 0},
 							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotRemote, Name: actor2Name, Latency: 10 * time.Microsecond},
-							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotLocal0 + 1, Name: actor3Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotLocal1, Name: actor3Name, Latency: 0},
 							{StoryToken: story2, ActorToken: actor4, Availability: lobbymessage.SlotRemote, Name: actor4Name, Latency: 20 * time.Microsecond},
 						},
 						State: lobbymessage.StateReady,
@@ -590,6 +590,96 @@ func TestLobbyService(t *testing.T) {
 				},
 			},
 		},
+		{
+			name: "request",
+			mutate: func(srv *lobbyService) error {
+				srv.JoinLocal(actor1, 0, 0, actor1Name)
+				srv.JoinLocal(actor2, 1, 1, actor2Name)
+				srv.JoinLocal(actor3, 2, 2, actor3Name)
+				srv.HandleClient(&lobbymessage.Join{
+					HeaderClient: lobbymessage.HeaderClient{
+						LobbyToken:  lobbyToken,
+						ClientToken: client1,
+						ActorToken:  actor4,
+						Latency:     1,
+					},
+					Slot: 3,
+					Name: actor4Name,
+				}, net.UDPAddr{IP: client1Addr, Port: 11111})
+				srv.HandleClient(&lobbymessage.Request{
+					HeaderClient: lobbymessage.HeaderClient{
+						LobbyToken:  lobbyToken,
+						ClientToken: client2,
+						ActorToken:  0,
+						Latency:     2,
+					},
+				}, net.UDPAddr{IP: client2Addr, Port: 11111})
+				srv.HandleClient(&lobbymessage.Request{
+					HeaderClient: lobbymessage.HeaderClient{
+						LobbyToken:  lobbyToken,
+						ClientToken: client1,
+						ActorToken:  0,
+						Latency:     10,
+					},
+				}, net.UDPAddr{IP: client1Addr, Port: 11111})
+				return nil
+			},
+			expected: udpstar.Lobby{
+				Version: 4,
+				Name:    lobbyName,
+				Slots: []udpstar.LobbySlot{
+					{StoryToken: story1, ActorToken: actor1, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
+					{StoryToken: story1, ActorToken: actor2, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor3, Availability: udpstar.SlotLocal2, Name: actor3Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotRemote, Name: actor4Name, Latency: 10 * time.Microsecond},
+				},
+				State: udpstar.LobbyStateReady,
+			},
+			messages: []serverLobbyMessage{
+				{
+					addr: client2Addr,
+					msg: lobbymessage.Setup{
+						HeaderServer: lobbymessage.HeaderServer{LobbyToken: lobbyToken},
+						Name:         lobbyName,
+						Slots: []lobbymessage.Slot{
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: udpstar.SlotLocal2, Name: actor3Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor4Name, Latency: 1 * time.Microsecond},
+						},
+						State: lobbymessage.StateReady,
+					},
+				},
+				{
+					addr: client1Addr,
+					msg: lobbymessage.Setup{
+						HeaderServer: lobbymessage.HeaderServer{LobbyToken: lobbyToken},
+						Name:         lobbyName,
+						Slots: []lobbymessage.Slot{
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: udpstar.SlotLocal2, Name: actor3Name, Latency: 0},
+							{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotRemote, Name: actor4Name, Latency: 10 * time.Microsecond},
+						},
+						State: lobbymessage.StateReady,
+					},
+				},
+				{
+					addr: client1Addr,
+					msg: lobbymessage.Setup{
+						HeaderServer: lobbymessage.HeaderServer{LobbyToken: lobbyToken},
+						Name:         lobbyName,
+						Slots: []lobbymessage.Slot{
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: udpstar.SlotLocal2, Name: actor3Name, Latency: 0},
+							{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotRemote, Name: actor4Name, Latency: 10 * time.Microsecond},
+						},
+						State: lobbymessage.StateReady,
+					},
+				},
+			},
+		},
 	}
 
 	setup := &LobbySetup{
@@ -652,14 +742,14 @@ func TestLobbyService(t *testing.T) {
 				})
 			}
 
-			wantMessageSet := make(map[string]lobbymessage.Setup)
+			wantMessageSet := make(map[string][]lobbymessage.Setup)
 			for _, m := range test.messages {
-				wantMessageSet[m.addr.String()] = m.msg
+				wantMessageSet[m.addr.String()] = append(wantMessageSet[m.addr.String()], m.msg)
 			}
 
-			gotMessageSet := make(map[string]lobbymessage.Setup)
+			gotMessageSet := make(map[string][]lobbymessage.Setup)
 			for _, m := range messages {
-				gotMessageSet[m.addr.String()] = m.msg
+				gotMessageSet[m.addr.String()] = append(gotMessageSet[m.addr.String()], m.msg)
 			}
 
 			if !reflect.DeepEqual(wantMessageSet, gotMessageSet) {

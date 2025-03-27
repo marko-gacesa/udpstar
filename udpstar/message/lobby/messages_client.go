@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -73,6 +73,36 @@ func (m *Leave) Put(buf []byte) int {
 func (m *Leave) Get(buf []byte) int {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby) && checkCommand(&s, CommandLeave); !ok {
+		return 0
+	}
+	s.Get(&m.HeaderClient)
+	return s.Len()
+}
+
+type Request struct {
+	HeaderClient
+}
+
+var _ ClientMessage = (*Request)(nil)
+
+func (*Request) Command() Command { return CommandRequest }
+
+func (m *Request) Size() int {
+	return sizeClientBase
+}
+
+func (m *Request) Put(buf []byte) int {
+	s := message.NewSerializer(buf)
+	s.PutPrefix()
+	s.PutCategory(CategoryLobby)
+	s.Put8(byte(CommandRequest))
+	s.Put(&m.HeaderClient)
+	return s.Len()
+}
+
+func (m *Request) Get(buf []byte) int {
+	s := message.NewDeserializer(buf)
+	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby) && checkCommand(&s, CommandRequest); !ok {
 		return 0
 	}
 	s.Get(&m.HeaderClient)

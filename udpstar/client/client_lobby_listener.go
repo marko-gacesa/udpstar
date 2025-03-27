@@ -64,6 +64,7 @@ var WithLobbyListenerLogger = func(log *slog.Logger) func(listener *LobbyListene
 	}
 }
 
+// List returns the lobbies.
 func (c *LobbyListener) List(version int) []udpstar.LobbyListenerInfo {
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
@@ -81,6 +82,7 @@ func (c *LobbyListener) List(version int) []udpstar.LobbyListenerInfo {
 	return list
 }
 
+// HandleBroadcastMessages handles incoming broadcast network messages.
 func (c *LobbyListener) HandleBroadcastMessages(data []byte, addr net.UDPAddr) {
 	defer util.Recover(c.log)
 

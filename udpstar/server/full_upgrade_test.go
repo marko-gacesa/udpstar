@@ -102,7 +102,7 @@ func TestUpgrade(t *testing.T) {
 	lobbyExpectedSrv := udpstar.Lobby{
 		Name: lobbyName,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: storyToken, ActorToken: actor1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: storyToken, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: storyToken, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 		},
 		State: udpstar.LobbyStateReady,
@@ -111,7 +111,7 @@ func TestUpgrade(t *testing.T) {
 	lobbyExpectedCli := udpstar.Lobby{
 		Name: lobbyName,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: storyToken, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: storyToken, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: storyToken, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 		},
 		State: udpstar.LobbyStateReady,

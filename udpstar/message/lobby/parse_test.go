@@ -32,6 +32,14 @@ func TestParseClient(t *testing.T) {
 				Latency:     r.Uint32(),
 			},
 		},
+		&Request{
+			HeaderClient: HeaderClient{
+				LobbyToken:  message.RandomToken(),
+				ClientToken: message.RandomToken(),
+				ActorToken:  message.RandomToken(),
+				Latency:     r.Uint32(),
+			},
+		},
 	}
 
 	var buf [1024]byte

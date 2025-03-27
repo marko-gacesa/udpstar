@@ -7,7 +7,6 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
 	"time"
@@ -24,7 +23,7 @@ type lobbyService struct {
 
 	slots   []LobbySlot
 	state   lobbymessage.State
-	clients map[message.Token]int
+	clients map[message.Token]clientInfo
 	version int
 
 	commandCh chan lobbyCommandProcessor
@@ -51,7 +50,7 @@ func newLobbyService(
 
 		slots:   make([]LobbySlot, len(setup.SlotStories)),
 		state:   lobbymessage.StateActive,
-		clients: make(map[message.Token]int, len(setup.SlotStories)),
+		clients: make(map[message.Token]clientInfo, len(setup.SlotStories)),
 		version: 0,
 
 		commandCh: make(chan lobbyCommandProcessor),
@@ -68,16 +67,6 @@ func newLobbyService(
 }
 
 func (s *lobbyService) Start(ctx context.Context) error {
-	g, ctxGroup := errgroup.WithContext(ctx)
-
-	g.Go(func() error {
-		return s.start(ctxGroup)
-	})
-
-	return g.Wait()
-}
-
-func (s *lobbyService) start(ctx context.Context) error {
 	var buffer [4096]byte
 
 	const broadcastPeriod = 3 * time.Second
@@ -107,25 +96,23 @@ func (s *lobbyService) start(ctx context.Context) error {
 				broadcastTimer.Reset(broadcastPeriod)
 			}
 
-			// Send message to every client directly, but with relevant actor tokens filled.
-			for clientToken, count := range s.clients {
-				if count == 0 {
+			// Send message to every client directly, but only with relevant actor tokens filled.
+			for clientToken, cliInfo := range s.clients {
+				if cliInfo.Count == 0 {
 					delete(s.clients, clientToken)
 					continue
 				}
 
-				var addr net.UDPAddr
 				for i := range s.slots {
-					if s.slots[i].IsRemote && s.slots[i].ClientToken == clientToken {
+					if s.slots[i].isRemote() && s.slots[i].ClientToken == clientToken {
 						msg.Slots[i].ActorToken = s.slots[i].ActorToken
-						addr = s.slots[i].Addr
 					} else {
 						msg.Slots[i].ActorToken = 0
 					}
 				}
 
 				size := msg.Put(buffer[:])
-				err := s.sender.Send(buffer[:size], addr)
+				err := s.sender.Send(buffer[:size], cliInfo.Address)
 				if err != nil {
 					s.log.Error("failed to send to client",
 						"client", clientToken,
@@ -215,7 +202,9 @@ func (s *lobbyService) HandleClient(msg lobbymessage.ClientMessage, addr net.UDP
 	case *lobbymessage.Join:
 		cmd = lobbyRemoteJoin{msg: msg, addr: addr}
 	case *lobbymessage.Leave:
-		cmd = lobbyRemoteLeave{msg: msg}
+		cmd = lobbyRemoteLeave{msg: msg, addr: addr}
+	case *lobbymessage.Request:
+		cmd = lobbyRemoteRequest{msg: msg, addr: addr}
 	default:
 		return
 	}
@@ -226,12 +215,40 @@ func (s *lobbyService) HandleClient(msg lobbymessage.ClientMessage, addr net.UDP
 	}
 }
 
+func (s *lobbyService) remoteRequest(msgReq *lobbymessage.Request, addr net.UDPAddr) {
+	clientToken := msgReq.ClientToken
+	latency := msgReq.GetLatency()
+
+	s.updateClient(clientToken, addr, latency)
+
+	msg := s.getSetupMessage()
+
+	// Send message to the client directly, but only with relevant actor tokens filled.
+	for i := range s.slots {
+		if s.slots[i].isRemote() && s.slots[i].ClientToken == clientToken {
+			msg.Slots[i].ActorToken = s.slots[i].ActorToken
+		} else {
+			msg.Slots[i].ActorToken = 0
+		}
+	}
+
+	var buffer [4096]byte
+
+	size := msg.Put(buffer[:])
+	err := s.sender.Send(buffer[:size], addr)
+	if err != nil {
+		s.log.Error("failed to send to client",
+			"client", clientToken,
+			"err", err.Error())
+	}
+}
+
 func (s *lobbyService) localJoin(actorToken message.Token, slotIdx, localIdx byte, name string) bool {
-	if slotIdx >= byte(len(s.slots)) {
+	if slotIdx >= byte(len(s.slots)) || localIdx > byte(lobbymessage.SlotLocal3-lobbymessage.SlotLocal0) {
 		return false
 	}
 
-	if !s.slots[slotIdx].Available {
+	if !s.slots[slotIdx].isAvailable() {
 		if s.slots[slotIdx].ActorToken == actorToken {
 			// the slot is not available, but is claimed by the actor
 			s.slots[slotIdx].local(actorToken, localIdx, name)
@@ -269,12 +286,13 @@ func (s *lobbyService) localLeave(actorToken message.Token) bool {
 
 func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool {
 	slotIdx := int(msg.Slot)
+	latency := msg.GetLatency()
 
 	if slotIdx >= len(s.slots) {
 		return false
 	}
 
-	if !s.slots[slotIdx].Available {
+	if !s.slots[slotIdx].isAvailable() {
 		if s.slots[slotIdx].ActorToken == msg.ActorToken {
 			// the slot is not available, but is claimed by the actor
 
@@ -283,8 +301,8 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 				s.evictClient(clientToken)
 			}
 
-			s.clients[msg.ClientToken]++
-			s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, addr, msg.GetLatency())
+			s.incClient(msg.ClientToken, addr, latency)
+			s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name)
 			s.state = lobbymessage.StateActive
 
 			return true
@@ -303,31 +321,32 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 			// actor somehow changed the client token
 			s.evictClient(clientToken)
 		} else {
-			s.clients[s.slots[i].ClientToken]--
+			s.decClient(s.slots[i].ClientToken, addr, latency)
 			s.slots[i].clear()
 		}
 
 		break
 	}
 
-	s.clients[msg.ClientToken]++
-	s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, addr, msg.GetLatency())
+	s.incClient(msg.ClientToken, addr, latency)
+	s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name)
 	s.updateState()
 
 	return true
 }
 
-func (s *lobbyService) remoteLeave(msg *lobbymessage.Leave) bool {
+func (s *lobbyService) remoteLeave(msg *lobbymessage.Leave, addr net.UDPAddr) bool {
+	var changed bool
 	for i := 0; i < len(s.slots); i++ {
 		if msg.ActorToken == s.slots[i].ActorToken {
-			s.clients[s.slots[i].ClientToken]--
+			s.decClient(s.slots[i].ClientToken, addr, msg.GetLatency())
 			s.slots[i].clear()
 			s.state = lobbymessage.StateActive
-			return true
+			changed = true
 		}
 	}
 
-	return false
+	return changed
 }
 
 func (s *lobbyService) evictClient(clientToken message.Token) bool {
@@ -347,8 +366,8 @@ func (s *lobbyService) evictClient(clientToken message.Token) bool {
 func (s *lobbyService) evictActor(actorToken message.Token) bool {
 	for i := 0; i < len(s.slots); i++ {
 		if actorToken == s.slots[i].ActorToken {
-			if s.slots[i].IsRemote {
-				s.clients[s.slots[i].ClientToken]--
+			if s.slots[i].isRemote() {
+				s.decClientNoAddr(s.slots[i].ClientToken)
 			}
 			s.slots[i].clear()
 			s.state = lobbymessage.StateActive
@@ -361,7 +380,7 @@ func (s *lobbyService) evictActor(actorToken message.Token) bool {
 
 func (s *lobbyService) updateState() {
 	for i := 0; i < len(s.slots); i++ {
-		if s.slots[i].Available {
+		if s.slots[i].isAvailable() {
 			s.state = lobbymessage.StateActive
 			return
 		}
@@ -377,8 +396,14 @@ func (s *lobbyService) getSetupMessage() lobbymessage.Setup {
 	}
 
 	for i := 0; i < len(msg.Slots); i++ {
-		msg.Slots[i] = lobbymessage.Slot(s.slots[i].asExt())
-		msg.Slots[i].ActorToken = 0 // obfuscate
+		info := s.clients[s.slots[i].ClientToken]
+		msg.Slots[i] = lobbymessage.Slot(udpstar.LobbySlot{
+			StoryToken:   s.slots[i].StoryToken,
+			ActorToken:   0, // obfuscate
+			Availability: s.slots[i].Availability,
+			Name:         s.slots[i].Name,
+			Latency:      info.Latency,
+		})
 	}
 
 	msg.State = s.state
@@ -386,79 +411,87 @@ func (s *lobbyService) getSetupMessage() lobbymessage.Setup {
 	return msg
 }
 
-type LobbySlot struct {
-	StoryToken message.Token
-
-	Available bool
-	IsLocal   bool
-	IsRemote  bool
-	LocalIdx  byte
-
-	ClientToken message.Token
-	ActorToken  message.Token
-	Name        string
-	Addr        net.UDPAddr
-	LastContact time.Time
-	Latency     time.Duration
+type clientInfo struct {
+	Count int
+	ClientData
 }
 
-func (d *LobbySlot) remote(actor, client message.Token, name string, addr net.UDPAddr, latency time.Duration) {
-	d.Available = false
-	d.IsLocal = false
-	d.IsRemote = true
-	d.LocalIdx = 0
+func (s *lobbyService) incClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
+	info := s.clients[clientToken]
+	info.Count++
+	info.ClientData.LastMsgReceived = time.Now()
+	info.ClientData.Address = addr
+	info.ClientData.Latency = latency
+	s.clients[clientToken] = info
+}
+
+func (s *lobbyService) decClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
+	info := s.clients[clientToken]
+	info.Count--
+	info.ClientData.LastMsgReceived = time.Now()
+	info.ClientData.Address = addr
+	info.ClientData.Latency = latency
+	if info.Count <= 0 {
+		delete(s.clients, clientToken)
+		return
+	}
+	s.clients[clientToken] = info
+}
+
+func (s *lobbyService) decClientNoAddr(clientToken message.Token) {
+	info := s.clients[clientToken]
+	info.Count--
+	if info.Count <= 0 {
+		delete(s.clients, clientToken)
+		return
+	}
+	s.clients[clientToken] = info
+}
+
+func (s *lobbyService) updateClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
+	info, ok := s.clients[clientToken]
+	if !ok {
+		return
+	}
+	info.ClientData.LastMsgReceived = time.Now()
+	info.ClientData.Address = addr
+	info.ClientData.Latency = latency
+	s.clients[clientToken] = info
+}
+
+type LobbySlot struct {
+	StoryToken   message.Token
+	Availability lobbymessage.SlotAvailability
+	ClientToken  message.Token
+	ActorToken   message.Token
+	Name         string
+}
+
+func (d *LobbySlot) isRemote() bool { return d.Availability == lobbymessage.SlotRemote }
+func (d *LobbySlot) isLocal() bool {
+	return d.Availability >= lobbymessage.SlotLocal0 && d.Availability <= lobbymessage.SlotLocal3
+}
+func (d *LobbySlot) isAvailable() bool { return d.Availability == lobbymessage.SlotAvailable }
+
+func (d *LobbySlot) remote(actor, client message.Token, name string) {
+	d.Availability = lobbymessage.SlotRemote
 	d.ClientToken = client
 	d.ActorToken = actor
 	d.Name = name
-	d.LastContact = time.Now()
-	d.Addr = addr
-	d.Latency = latency
 }
 
 func (d *LobbySlot) local(actor message.Token, idx byte, name string) {
-	d.Available = false
-	d.IsLocal = true
-	d.IsRemote = false
-	d.LocalIdx = idx
+	d.Availability = lobbymessage.SlotLocal0 + lobbymessage.SlotAvailability(idx)
 	d.ClientToken = 0
 	d.ActorToken = actor
 	d.Name = name
-	d.LastContact = time.Time{}
-	d.Addr = net.UDPAddr{}
-	d.Latency = 0
 }
 
 func (d *LobbySlot) clear() {
-	d.Available = true
-	d.IsLocal = false
-	d.IsRemote = false
-	d.LocalIdx = 0
+	d.Availability = lobbymessage.SlotAvailable
 	d.ClientToken = 0
 	d.ActorToken = 0
 	d.Name = ""
-	d.LastContact = time.Time{}
-	d.Addr = net.UDPAddr{}
-	d.Latency = 0
-}
-
-func (d *LobbySlot) asExt() udpstar.LobbySlot {
-	return udpstar.LobbySlot{
-		StoryToken:   d.StoryToken,
-		ActorToken:   d.ActorToken,
-		Availability: d.availability(),
-		Name:         d.Name,
-		Latency:      d.Latency,
-	}
-}
-
-func (d *LobbySlot) availability() lobbymessage.SlotAvailability {
-	avail := lobbymessage.SlotAvailable
-	if d.IsRemote {
-		avail = lobbymessage.SlotRemote
-	} else if d.IsLocal {
-		avail = lobbymessage.SlotLocal0 + udpstar.Availability(d.LocalIdx)
-	}
-	return avail
 }
 
 // lobbyToSession converts a lobby to session, but all channels are left unassigned (nil).
@@ -479,7 +512,7 @@ func lobbyToSession(token message.Token, slots []LobbySlot) Session {
 			})
 		}
 
-		if slot.IsLocal {
+		if slot.isLocal() {
 			session.LocalActors = append(session.LocalActors, LocalActor{
 				Actor: Actor{
 					Token: slot.ActorToken,
@@ -491,7 +524,7 @@ func lobbyToSession(token message.Token, slots []LobbySlot) Session {
 				},
 				InputCh: nil,
 			})
-		} else if slot.IsRemote {
+		} else if slot.isRemote() {
 			clientIdx := -1
 			for idx, client := range session.Clients {
 				if client.Token == slot.ClientToken {
@@ -525,7 +558,14 @@ func lobbyToSession(token message.Token, slots []LobbySlot) Session {
 func (s *lobbyService) toLobby() udpstar.Lobby {
 	slots := make([]udpstar.LobbySlot, len(s.slots))
 	for i := range s.slots {
-		slots[i] = s.slots[i].asExt()
+		info := s.clients[s.slots[i].ClientToken]
+		slots[i] = udpstar.LobbySlot{
+			StoryToken:   s.slots[i].StoryToken,
+			ActorToken:   s.slots[i].ActorToken,
+			Availability: s.slots[i].Availability,
+			Name:         s.slots[i].Name,
+			Latency:      info.Latency,
+		}
 	}
 
 	return udpstar.Lobby{
@@ -602,11 +642,22 @@ func (req lobbyRemoteJoin) process(s *lobbyService) bool {
 }
 
 type lobbyRemoteLeave struct {
-	msg *lobbymessage.Leave
+	msg  *lobbymessage.Leave
+	addr net.UDPAddr
 }
 
 func (req lobbyRemoteLeave) process(s *lobbyService) bool {
-	return s.remoteLeave(req.msg)
+	return s.remoteLeave(req.msg, req.addr)
+}
+
+type lobbyRemoteRequest struct {
+	msg  *lobbymessage.Request
+	addr net.UDPAddr
+}
+
+func (req lobbyRemoteRequest) process(s *lobbyService) bool {
+	s.remoteRequest(req.msg, req.addr)
+	return false
 }
 
 type lobbyChangeName struct {
@@ -626,11 +677,12 @@ type lobbyFinishReq struct {
 }
 
 type lobbyFinishResp struct {
-	version int
-	name    string
-	slots   []LobbySlot
-	state   lobbymessage.State
-	err     error
+	version   int
+	name      string
+	slots     []LobbySlot
+	clientMap map[message.Token]ClientData
+	state     lobbymessage.State
+	err       error
 }
 
 func (req lobbyFinishReq) process(s *lobbyService) bool {
@@ -655,12 +707,18 @@ func (req lobbyFinishReq) process(s *lobbyService) bool {
 	slots := make([]LobbySlot, len(s.slots))
 	copy(slots, s.slots)
 
+	clientMap := make(map[message.Token]ClientData, len(s.clients))
+	for clientToken, info := range s.clients {
+		clientMap[clientToken] = info.ClientData
+	}
+
 	req.responseCh <- lobbyFinishResp{
-		version: s.version,
-		name:    s.name,
-		slots:   slots,
-		state:   s.state,
-		err:     nil,
+		version:   s.version,
+		name:      s.name,
+		slots:     slots,
+		clientMap: clientMap,
+		state:     s.state,
+		err:       nil,
 	}
 
 	return true

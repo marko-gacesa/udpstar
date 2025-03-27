@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -10,11 +10,14 @@ func (t Command) String() string {
 		return "join"
 	case CommandLeave:
 		return "leave"
+	case CommandRequest:
+		return "request"
 	}
 	return "unknown"
 }
 
 const (
-	CommandJoin  Command = 1
-	CommandLeave Command = 2
+	CommandJoin    Command = 1
+	CommandLeave   Command = 2
+	CommandRequest Command = 3
 )

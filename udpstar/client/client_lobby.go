@@ -54,7 +54,8 @@ type Lobby struct {
 	commandCh chan lobbyCommandProcessor
 	doneCh    chan struct{}
 
-	finishTimer *time.Timer
+	requestTimer *time.Timer
+	finishTimer  *time.Timer
 
 	dataMx   sync.Mutex
 	data     udpstar.Lobby
@@ -70,16 +71,17 @@ func NewLobby(
 	opts ...func(*Lobby),
 ) (*Lobby, error) {
 	c := &Lobby{
-		lobbyToken:  lobbyToken,
-		clientToken: clientToken,
-		sender:      sender,
-		sendCh:      make(chan lobbymessage.ClientMessage),
-		pingCh:      make(chan pingmessage.Ping),
-		commandCh:   make(chan lobbyCommandProcessor),
-		doneCh:      make(chan struct{}),
-		finishTimer: time.NewTimer(time.Hour),
-		dataTime:    time.Now(),
-		log:         slog.Default(),
+		lobbyToken:   lobbyToken,
+		clientToken:  clientToken,
+		sender:       sender,
+		sendCh:       make(chan lobbymessage.ClientMessage),
+		pingCh:       make(chan pingmessage.Ping),
+		commandCh:    make(chan lobbyCommandProcessor),
+		doneCh:       make(chan struct{}),
+		requestTimer: time.NewTimer(time.Millisecond),
+		finishTimer:  time.NewTimer(time.Hour),
+		dataTime:     time.Now(),
+		log:          slog.Default(),
 	}
 	for _, opt := range opts {
 		opt(c)
@@ -102,6 +104,12 @@ var WithLobbyLogger = func(log *slog.Logger) func(*Lobby) {
 	}
 }
 
+// durationRequestTimer is period after the client will re-request lobby setup from the server.
+// Server's broadcast period is 3 sec, this is a little bit more.
+const durationRequestTimer = 3500 * time.Millisecond
+
+// Start starts the lobby client. It's a blocking call. Cancel the context to abort it.
+// If the lobby is successfully finished, it will return a Session.
 func (c *Lobby) Start(ctx context.Context) *Session {
 	finished := &atomic.Bool{}
 
@@ -177,6 +185,22 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
+		defer c.requestTimer.Stop()
+
+		for {
+			select {
+			case <-c.doneCh:
+				return
+			case <-c.requestTimer.C:
+				c.sendCh <- &lobbymessage.Request{}
+				c.requestTimer.Reset(durationRequestTimer)
+			}
+		}
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
 		c.pingSrv.Start(ctx)
 	}()
 
@@ -225,6 +249,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	return result
 }
 
+// HandleIncomingMessages handles incoming network messages intended for this client.
 func (c *Lobby) HandleIncomingMessages(data []byte) {
 	defer util.Recover(c.log)
 
@@ -260,14 +285,17 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 	c.log.Warn("received unrecognized message")
 }
 
+// Join sends a join request message to the server.
 func (c *Lobby) Join(actorToken message.Token, slot byte, name string) {
 	c.sendCommand(lobbyJoinReq{ActorToken: actorToken, Slot: slot, Name: name})
 }
 
+// Leave sends a leave request message to the server for a single actor.
 func (c *Lobby) Leave(actorToken message.Token) {
 	c.sendCommand(lobbyLeaveReq{ActorToken: actorToken})
 }
 
+// LeaveAll sends a leave-all message to the server. That's a leave request for each actor from this client.
 func (c *Lobby) LeaveAll() {
 	c.sendCommand(lobbyLeaveReq{ActorToken: 0})
 }
@@ -316,6 +344,8 @@ func (c *Lobby) updateData(msg *lobbymessage.Setup) {
 		duration := time.Duration(c.data.State-lobbymessage.StateStarting) * time.Second
 		c.finishTimer.Reset(duration)
 	}
+
+	c.requestTimer.Reset(durationRequestTimer)
 }
 
 func (c *Lobby) sendCommand(cmd lobbyCommandProcessor) {

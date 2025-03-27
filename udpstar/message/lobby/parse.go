@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -23,6 +23,12 @@ func ParseClient(buf []byte) ClientMessage {
 		}
 	case CommandLeave:
 		var m Leave
+		if m.Get(buf) > 0 {
+			return &m
+		}
+
+	case CommandRequest:
+		var m Request
 		if m.Get(buf) > 0 {
 			return &m
 		}

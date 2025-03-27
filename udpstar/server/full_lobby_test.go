@@ -128,7 +128,7 @@ func TestLobby(t *testing.T) {
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
 			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
@@ -144,7 +144,7 @@ func TestLobby(t *testing.T) {
 		Name: lobbyName,
 		Slots: []udpstar.LobbySlot{
 			// a client can see the only own actor tokens, so for actor 1 the token is 0
-			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
 			{StoryToken: story2Token, Availability: udpstar.SlotAvailable, Name: ""},
@@ -170,10 +170,10 @@ func TestLobby(t *testing.T) {
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor4Name},
 		},
 		State: udpstar.LobbyStateReady,
 	}
@@ -185,10 +185,10 @@ func TestLobby(t *testing.T) {
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor2Name},
 			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor4Name},
 		},
 		State: udpstar.LobbyStateReady,
 	}
@@ -212,10 +212,10 @@ func TestLobby(t *testing.T) {
 		Name: lobbyNameNew,
 		Slots: []udpstar.LobbySlot{
 			// a client can see the only own actor tokens, so for actors 1 and 4 the token is 0
-			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, ActorToken: actor4Token, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story2Token, ActorToken: actor4Token, Availability: udpstar.SlotLocal1, Name: actor4Name},
 		},
 		State: udpstar.LobbyStateReady,
 	}
@@ -229,10 +229,10 @@ func TestLobby(t *testing.T) {
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor4Name},
 		},
 		State: udpstar.LobbyStateReady,
 	}
@@ -253,10 +253,10 @@ func TestLobby(t *testing.T) {
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotAvailable, Name: ""},
 			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story2Token, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor4Name},
 		},
 		State: udpstar.LobbyStateActive,
 	}
@@ -277,10 +277,10 @@ func TestLobby(t *testing.T) {
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
 		Slots: []udpstar.LobbySlot{
-			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0 + 0, Name: actor1Name},
+			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
 			{StoryToken: story2Token, ActorToken: actor3Token, Availability: udpstar.SlotRemote, Name: actor3Name},
-			{StoryToken: story2Token, ActorToken: actor4Token, Availability: udpstar.SlotLocal0 + 1, Name: actor4Name},
+			{StoryToken: story2Token, ActorToken: actor4Token, Availability: udpstar.SlotLocal1, Name: actor4Name},
 		},
 		State: udpstar.LobbyStateReady,
 	}

@@ -94,6 +94,7 @@ var WithLogger = func(log *slog.Logger) func(*Client) {
 	}
 }
 
+// Start starts the session client. It's a blocking call. Cancel the context to abort it.
 func (c *Client) Start(ctx context.Context) {
 	go func() {
 		var buffer [pingmessage.SizeOfPing]byte
@@ -169,6 +170,7 @@ func (c *Client) Start(ctx context.Context) {
 	c.log.Info("client stopped")
 }
 
+// HandleIncomingMessages handles incoming network messages intended for this client.
 func (c *Client) HandleIncomingMessages(data []byte) {
 	defer util.Recover(c.log)
 
@@ -239,10 +241,13 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 	}
 }
 
+// Quality returns the level of consistency in message processing: Average divergence of last few
+// messages processed time when compared to the server. Ideally should be zero.
 func (c *Client) Quality() time.Duration {
 	return c.storySrv.Quality()
 }
 
+// Latencies returns network latency for all participants.
 func (c *Client) Latencies() udpstar.LatencyInfo {
 	c.latencyMx.Lock()
 	defer c.latencyMx.Unlock()

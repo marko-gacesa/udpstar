@@ -348,24 +348,14 @@ func (s *Server) FinishLobby(
 	}
 
 	session := lobbyToSession(lobbyToken, responseFinish.slots)
-
-	clientDataMap := make(map[message.Token]ClientData, len(responseFinish.slots))
-	for _, slot := range responseFinish.slots {
-		if slot.IsRemote {
-			clientDataMap[slot.ClientToken] = ClientData{
-				LastMsgReceived: slot.LastContact,
-				Address:         slot.Addr,
-				Latency:         slot.Latency,
-			}
-		}
-	}
+	clientMap := responseFinish.clientMap
 
 	s.mx.Lock()
 	lobby.cancelFn()
 	delete(s.lobbyMap, lobbyToken)
 	s.mx.Unlock()
 
-	return &session, clientDataMap, nil
+	return &session, clientMap, nil
 }
 
 func (s *Server) GetLobby(lobbyToken message.Token, version int) (*udpstar.Lobby, error) {
