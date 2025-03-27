@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -20,8 +20,6 @@ type ClientMessage interface {
 	Command() Command
 	GetClientToken() message.Token
 	SetClientToken(message.Token)
-	GetActorToken() message.Token
-	SetActorToken(message.Token)
 	GetLatency() time.Duration
 	SetLatency(time.Duration)
 }

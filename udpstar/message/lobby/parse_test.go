@@ -18,25 +18,24 @@ func TestParseClient(t *testing.T) {
 			HeaderClient: HeaderClient{
 				LobbyToken:  message.RandomToken(),
 				ClientToken: message.RandomToken(),
-				ActorToken:  message.RandomToken(),
 				Latency:     r.Uint32(),
 			},
-			Slot: byte(r.Intn(8)),
-			Name: "blah-blah",
+			ActorToken: message.RandomToken(),
+			Slot:       byte(r.Intn(8)),
+			Name:       "blah-blah",
 		},
 		&Leave{
 			HeaderClient: HeaderClient{
 				LobbyToken:  message.RandomToken(),
 				ClientToken: message.RandomToken(),
-				ActorToken:  message.RandomToken(),
 				Latency:     r.Uint32(),
 			},
+			ActorToken: message.RandomToken(),
 		},
 		&Request{
 			HeaderClient: HeaderClient{
 				LobbyToken:  message.RandomToken(),
 				ClientToken: message.RandomToken(),
-				ActorToken:  message.RandomToken(),
 				Latency:     r.Uint32(),
 			},
 		},

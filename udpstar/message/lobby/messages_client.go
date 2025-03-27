@@ -13,8 +13,9 @@ const sizeClientBase = message.SizeOfPrefix +
 
 type Join struct {
 	HeaderClient
-	Slot byte
-	Name string
+	ActorToken message.Token
+	Slot       byte
+	Name       string
 }
 
 var _ ClientMessage = (*Join)(nil)
@@ -23,6 +24,7 @@ func (*Join) Command() Command { return CommandJoin }
 
 func (m *Join) Size() int {
 	return sizeClientBase +
+		message.SizeOfToken +
 		1 + // slot
 		1 + len(m.Name)
 }
@@ -33,6 +35,7 @@ func (m *Join) Put(buf []byte) int {
 	s.PutCategory(CategoryLobby)
 	s.Put8(byte(CommandJoin))
 	s.Put(&m.HeaderClient)
+	s.PutToken(m.ActorToken)
 	s.Put8(m.Slot)
 	s.PutStr(m.Name)
 	return s.Len()
@@ -44,6 +47,7 @@ func (m *Join) Get(buf []byte) int {
 		return 0
 	}
 	s.Get(&m.HeaderClient)
+	s.GetToken(&m.ActorToken)
 	s.Get8(&m.Slot)
 	s.GetStr(&m.Name)
 	return s.Len()
@@ -51,6 +55,7 @@ func (m *Join) Get(buf []byte) int {
 
 type Leave struct {
 	HeaderClient
+	ActorToken message.Token
 }
 
 var _ ClientMessage = (*Leave)(nil)
@@ -58,7 +63,7 @@ var _ ClientMessage = (*Leave)(nil)
 func (*Leave) Command() Command { return CommandLeave }
 
 func (m *Leave) Size() int {
-	return sizeClientBase
+	return sizeClientBase + message.SizeOfToken
 }
 
 func (m *Leave) Put(buf []byte) int {
@@ -67,6 +72,7 @@ func (m *Leave) Put(buf []byte) int {
 	s.PutCategory(CategoryLobby)
 	s.Put8(byte(CommandLeave))
 	s.Put(&m.HeaderClient)
+	s.PutToken(m.ActorToken)
 	return s.Len()
 }
 
@@ -76,6 +82,7 @@ func (m *Leave) Get(buf []byte) int {
 		return 0
 	}
 	s.Get(&m.HeaderClient)
+	s.GetToken(&m.ActorToken)
 	return s.Len()
 }
 

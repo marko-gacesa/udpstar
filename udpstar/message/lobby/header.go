@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024,2025 by Marko Gaćeša
 
 package lobby
 
@@ -11,7 +11,6 @@ import (
 type HeaderClient struct {
 	LobbyToken  message.Token
 	ClientToken message.Token
-	ActorToken  message.Token
 	Latency     uint32
 }
 
@@ -31,14 +30,6 @@ func (m *HeaderClient) SetClientToken(clientToken message.Token) {
 	m.ClientToken = clientToken
 }
 
-func (m *HeaderClient) GetActorToken() message.Token {
-	return m.ClientToken
-}
-
-func (m *HeaderClient) SetActorToken(actorToken message.Token) {
-	m.ActorToken = actorToken
-}
-
 func (m *HeaderClient) GetLatency() time.Duration {
 	return time.Duration(int32(m.Latency)) * time.Microsecond
 }
@@ -47,21 +38,19 @@ func (m *HeaderClient) SetLatency(latency time.Duration) {
 	m.Latency = uint32(latency.Microseconds())
 }
 
-const sizeOfHeaderClient = 3*message.SizeOfToken + 4
+const sizeOfHeaderClient = 2*message.SizeOfToken + 4
 
 func (m *HeaderClient) Put(buf []byte) int {
 	binary.LittleEndian.PutUint32(buf[:message.SizeOfToken], uint32(m.LobbyToken))
 	binary.LittleEndian.PutUint32(buf[message.SizeOfToken:2*message.SizeOfToken], uint32(m.ClientToken))
-	binary.LittleEndian.PutUint32(buf[2*message.SizeOfToken:3*message.SizeOfToken], uint32(m.ActorToken))
-	binary.LittleEndian.PutUint32(buf[3*message.SizeOfToken:3*message.SizeOfToken+4], m.Latency)
+	binary.LittleEndian.PutUint32(buf[2*message.SizeOfToken:2*message.SizeOfToken+4], m.Latency)
 	return sizeOfHeaderClient
 }
 
 func (m *HeaderClient) Get(buf []byte) int {
 	m.LobbyToken = message.Token(binary.LittleEndian.Uint32(buf[:message.SizeOfToken]))
 	m.ClientToken = message.Token(binary.LittleEndian.Uint32(buf[message.SizeOfToken : 2*message.SizeOfToken]))
-	m.ActorToken = message.Token(binary.LittleEndian.Uint32(buf[2*message.SizeOfToken : 3*message.SizeOfToken]))
-	m.Latency = binary.LittleEndian.Uint32(buf[3*message.SizeOfToken : 3*message.SizeOfToken+4])
+	m.Latency = binary.LittleEndian.Uint32(buf[2*message.SizeOfToken : 2*message.SizeOfToken+4])
 	return sizeOfHeaderClient
 }
 

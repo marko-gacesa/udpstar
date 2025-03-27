@@ -547,8 +547,7 @@ func (s *Server) handleLobby(msg lobbymessage.ClientMessage, addr net.UDPAddr) {
 		s.log.Warn("unknown lobby",
 			"addr", addr,
 			"lobby", lobbyToken,
-			"client", msg.GetClientToken(),
-			"actor", msg.GetActorToken())
+			"client", msg.GetClientToken())
 		return
 	}
 

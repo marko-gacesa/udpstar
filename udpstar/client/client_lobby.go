@@ -370,8 +370,8 @@ func (r lobbyJoinReq) process(c *Lobby) {
 	var msg lobbymessage.Join
 	msg.SetLobbyToken(c.lobbyToken)
 	msg.SetClientToken(c.clientToken)
-	msg.SetActorToken(r.ActorToken)
 	msg.SetLatency(c.pingSrv.Latency())
+	msg.ActorToken = r.ActorToken
 	msg.Slot = r.Slot
 	msg.Name = r.Name
 
@@ -389,8 +389,8 @@ func (r lobbyLeaveReq) process(c *Lobby) {
 	var msg lobbymessage.Leave
 	msg.SetLobbyToken(c.lobbyToken)
 	msg.SetClientToken(c.clientToken)
-	msg.SetActorToken(r.ActorToken)
 	msg.SetLatency(c.pingSrv.Latency())
+	msg.ActorToken = r.ActorToken
 
 	select {
 	case <-c.doneCh:

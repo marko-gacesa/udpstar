@@ -236,22 +236,22 @@ func TestLobbyService(t *testing.T) {
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor2,
 						Latency:     10,
 					},
-					Slot: 1,
-					Name: actor2Name,
+					ActorToken: actor2,
+					Slot:       1,
+					Name:       actor2Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				srv.JoinLocal(actor3, 2, 1, actor3Name)
 				srv.HandleClient(&lobbymessage.Join{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client2,
-						ActorToken:  actor4,
 						Latency:     20,
 					},
-					Slot: 3,
-					Name: actor4Name,
+					ActorToken: actor4,
+					Slot:       3,
+					Name:       actor4Name,
 				}, net.UDPAddr{IP: client2Addr, Port: 11111})
 				return nil
 			},
@@ -305,53 +305,53 @@ func TestLobbyService(t *testing.T) {
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor1,
 						Latency:     10,
 					},
-					Slot: 0,
-					Name: actor1Name,
+					ActorToken: actor1,
+					Slot:       0,
+					Name:       actor1Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				// remote join 2, from client 2
 				srv.HandleClient(&lobbymessage.Join{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client2,
-						ActorToken:  actor2,
 						Latency:     20,
 					},
-					Slot: 1,
-					Name: actor2Name,
+					ActorToken: actor2,
+					Slot:       1,
+					Name:       actor2Name,
 				}, net.UDPAddr{IP: client2Addr, Port: 11111})
 				// remote join 1, rename, from client 1
 				srv.HandleClient(&lobbymessage.Join{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor1,
 						Latency:     15,
 					},
-					Slot: 0,
-					Name: actor1Name + actorRename,
+					ActorToken: actor1,
+					Slot:       0,
+					Name:       actor1Name + actorRename,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				// remote join 3, from client 2
 				srv.HandleClient(&lobbymessage.Join{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client2,
-						ActorToken:  actor3,
 						Latency:     20,
 					},
-					Slot: 2,
-					Name: actor3Name,
+					ActorToken: actor3,
+					Slot:       2,
+					Name:       actor3Name,
 				}, net.UDPAddr{IP: client2Addr, Port: 11111})
 				// remote leave 2, from client 2
 				srv.HandleClient(&lobbymessage.Leave{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client2,
-						ActorToken:  actor2,
 						Latency:     20,
 					},
+					ActorToken: actor2,
 				}, net.UDPAddr{IP: client2Addr, Port: 11111})
 				return nil
 			},
@@ -422,11 +422,11 @@ func TestLobbyService(t *testing.T) {
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor2,
 						Latency:     0,
 					},
-					Slot: 5,
-					Name: actor2Name,
+					ActorToken: actor2,
+					Slot:       5,
+					Name:       actor2Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				return nil
 			},
@@ -451,21 +451,21 @@ func TestLobbyService(t *testing.T) {
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor2,
 						Latency:     0,
 					},
-					Slot: 1,
-					Name: actor2Name,
+					ActorToken: actor2,
+					Slot:       1,
+					Name:       actor2Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				srv.HandleClient(&lobbymessage.Join{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor3,
 						Latency:     0,
 					},
-					Slot: 2,
-					Name: actor3Name,
+					ActorToken: actor3,
+					Slot:       2,
+					Name:       actor3Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				srv.Evict(actor3)
 				return nil
@@ -519,31 +519,31 @@ func TestLobbyService(t *testing.T) {
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client2,
-						ActorToken:  actor1,
 						Latency:     0,
 					},
-					Slot: 0,
-					Name: actor1Name,
+					ActorToken: actor1,
+					Slot:       0,
+					Name:       actor1Name,
 				}, net.UDPAddr{IP: client2Addr, Port: 11111})
 				srv.HandleClient(&lobbymessage.Join{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor2,
 						Latency:     0,
 					},
-					Slot: 1,
-					Name: actor2Name,
+					ActorToken: actor2,
+					Slot:       1,
+					Name:       actor2Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				srv.HandleClient(&lobbymessage.Join{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor3,
 						Latency:     0,
 					},
-					Slot: 2,
-					Name: actor3Name,
+					ActorToken: actor3,
+					Slot:       2,
+					Name:       actor3Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				srv.EvictClient(client1)
 				return nil
@@ -600,17 +600,16 @@ func TestLobbyService(t *testing.T) {
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  actor4,
 						Latency:     1,
 					},
-					Slot: 3,
-					Name: actor4Name,
+					ActorToken: actor4,
+					Slot:       3,
+					Name:       actor4Name,
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
 				srv.HandleClient(&lobbymessage.Request{
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client2,
-						ActorToken:  0,
 						Latency:     2,
 					},
 				}, net.UDPAddr{IP: client2Addr, Port: 11111})
@@ -618,7 +617,6 @@ func TestLobbyService(t *testing.T) {
 					HeaderClient: lobbymessage.HeaderClient{
 						LobbyToken:  lobbyToken,
 						ClientToken: client1,
-						ActorToken:  0,
 						Latency:     10,
 					},
 				}, net.UDPAddr{IP: client1Addr, Port: 11111})
