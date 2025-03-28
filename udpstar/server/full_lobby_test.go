@@ -3,6 +3,7 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/client"
@@ -23,6 +24,7 @@ func TestLobby(t *testing.T) {
 	}))
 
 	const lobbyName = "test-lobby"
+	def := []byte{1, 2, 3, 4, 5}
 
 	lobbyToken := message.Token(502)
 	story1Token := message.Token(78)
@@ -72,6 +74,7 @@ func TestLobby(t *testing.T) {
 	err = srv.StartLobby(ctx, &server.LobbySetup{
 		Token:       lobbyToken,
 		Name:        lobbyName,
+		Def:         def,
 		SlotStories: lobbySlots,
 	})
 	if err != nil {
@@ -127,6 +130,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
@@ -142,6 +146,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			// a client can see the only own actor tokens, so for actor 1 the token is 0
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
@@ -169,6 +174,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
@@ -184,6 +190,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyName,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor2Name},
@@ -210,6 +217,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			// a client can see the only own actor tokens, so for actors 1 and 4 the token is 0
 			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
@@ -228,6 +236,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
@@ -252,6 +261,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: 0, Availability: udpstar.SlotAvailable, Name: ""},
@@ -276,6 +286,7 @@ func TestLobby(t *testing.T) {
 
 	lobbyExpected = udpstar.Lobby{
 		Name: lobbyNameNew,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: story1Token, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: story1Token, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
@@ -303,6 +314,17 @@ func compareLobby(t *testing.T, l *slog.Logger, key string, a, b udpstar.Lobby) 
 		}
 		if l != nil {
 			l.Debug("lobby name doesn't match", "key", key, "a", a.Name, "b", b.Name)
+		}
+		equals = false
+	}
+
+	if !bytes.Equal(a.Def, b.Def) {
+		if t != nil {
+			t.Errorf("lobby def doesn't match: key=%s a=%v b=%v",
+				key, a.Def, b.Def)
+		}
+		if l != nil {
+			l.Debug("lobby def doesn't match", "key", key, "a", a.Def, "b", b.Def)
 		}
 		equals = false
 	}

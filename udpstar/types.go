@@ -23,6 +23,7 @@ const (
 type Lobby struct {
 	Version int
 	Name    string
+	Def     []byte
 	Slots   []LobbySlot
 	State   LobbyState
 }

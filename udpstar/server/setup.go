@@ -11,6 +11,7 @@ import (
 type LobbySetup struct {
 	Token       message.Token
 	Name        string
+	Def         []byte
 	SlotStories []message.Token
 }
 
@@ -38,6 +39,8 @@ func (s *LobbySetup) Validate() error {
 
 type Session struct {
 	Token       message.Token
+	Name        string
+	Def         []byte
 	LocalActors []LocalActor
 	Clients     []Client
 	Stories     []Story

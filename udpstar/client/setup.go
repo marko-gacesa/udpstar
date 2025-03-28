@@ -11,6 +11,8 @@ import (
 
 type Session struct {
 	Token       message.Token
+	Name        string
+	Def         []byte
 	ClientToken message.Token
 	Actors      []Actor
 	Stories     []Story

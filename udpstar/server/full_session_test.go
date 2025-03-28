@@ -49,8 +49,13 @@ func TestSession(t *testing.T) {
 	recStoryCli1 := channel.NewRecorder[sequence.Entry]()
 	recStoryCli2 := channel.NewRecorder[sequence.Entry]()
 
+	const sessionName = "session-test"
+	def := []byte{7, 2, 5}
+
 	session := server.Session{
 		Token: sessionToken,
+		Name:  sessionName,
+		Def:   def,
 		LocalActors: []server.LocalActor{
 			{
 				Actor: server.Actor{

@@ -3,6 +3,7 @@
 package server_test
 
 import (
+	"bytes"
 	"context"
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/client"
@@ -10,6 +11,7 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/server"
 	"log/slog"
 	"os"
+	"slices"
 	"sync"
 	"testing"
 	"time"
@@ -23,6 +25,7 @@ func TestUpgrade(t *testing.T) {
 	}))
 
 	const lobbyName = "test-lobby"
+	def := []byte{4, 2}
 
 	lobbyToken := message.Token(768)
 	storyToken := message.Token(99)
@@ -54,12 +57,16 @@ func TestUpgrade(t *testing.T) {
 	serverSender.SetHandler(srv.HandleIncomingMessages)
 	clientSender.SetHandler(cli.HandleIncomingMessages)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	ctxServer, cancelServer := context.WithCancel(context.Background())
+	defer cancelServer()
 
-	err = srv.StartLobby(ctx, &server.LobbySetup{
+	ctxClient, cancelClient := context.WithCancel(context.Background())
+	defer cancelClient()
+
+	err = srv.StartLobby(ctxServer, &server.LobbySetup{
 		Token:       lobbyToken,
 		Name:        lobbyName,
+		Def:         def,
 		SlotStories: lobbySlots,
 	})
 	if err != nil {
@@ -67,15 +74,18 @@ func TestUpgrade(t *testing.T) {
 		return
 	}
 
-	wgNodes := &sync.WaitGroup{}
-	wgNodes.Add(2)
+	cliSessionCh := make(chan *client.Session, 1)
+
+	wgServer := &sync.WaitGroup{}
+	wgServer.Add(1)
 	go func() {
-		defer wgNodes.Done()
-		srv.Start(ctx)
+		defer wgServer.Done()
+		srv.Start(ctxServer)
 	}()
+
 	go func() {
-		defer wgNodes.Done()
-		cli.Start(ctx)
+		defer close(cliSessionCh)
+		cliSessionCh <- cli.Start(ctxClient)
 	}()
 
 	const pause = 20 * time.Millisecond
@@ -101,6 +111,7 @@ func TestUpgrade(t *testing.T) {
 
 	lobbyExpectedSrv := udpstar.Lobby{
 		Name: lobbyName,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: storyToken, ActorToken: actor1Token, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: storyToken, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
@@ -110,6 +121,7 @@ func TestUpgrade(t *testing.T) {
 
 	lobbyExpectedCli := udpstar.Lobby{
 		Name: lobbyName,
+		Def:  def,
 		Slots: []udpstar.LobbySlot{
 			{StoryToken: storyToken, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name},
 			{StoryToken: storyToken, ActorToken: actor2Token, Availability: udpstar.SlotRemote, Name: actor2Name},
@@ -126,7 +138,7 @@ func TestUpgrade(t *testing.T) {
 		return
 	}
 
-	session, clientData, err := srv.FinishLobby(ctx, lobbyToken)
+	srvSession, clientData, err := srv.FinishLobby(ctxServer, lobbyToken)
 	if err != nil {
 		t.Errorf("failed to finish lobby: %s", err.Error())
 		return
@@ -138,70 +150,121 @@ func TestUpgrade(t *testing.T) {
 		recSrvActor2 := channel.NewRecorder[[]byte]()
 		srvActor1 := make(chan []byte)
 
-		session.LocalActors[0].Channel = recSrvActor1.Record(ctx)
-		session.LocalActors[0].InputCh = srvActor1
-		session.Clients[0].Actors[0].Channel = recSrvActor2.Record(ctx)
-		session.Stories[0].Channel = storyChannel
+		srvSession.LocalActors[0].Channel = recSrvActor1.Record(ctx)
+		srvSession.LocalActors[0].InputCh = srvActor1
+		srvSession.Clients[0].Actors[0].Channel = recSrvActor2.Record(ctx)
+		srvSession.Stories[0].Channel = storyChannel
 	*/
 
-	if want, got := lobbyToken, session.Token; want != got {
-		t.Errorf("session token doesn't match: want=%d got=%d", want, got)
+	if want, got := lobbyToken, srvSession.Token; want != got {
+		t.Errorf("server session token doesn't match: want=%d got=%d", want, got)
 	}
 
-	if want, got := 1, len(session.LocalActors); want != got {
-		t.Errorf("session local actor count doesn't match: want=%d got=%d", want, got)
+	if want, got := lobbyName, srvSession.Name; want != got {
+		t.Errorf("server session name doesn't match: want=%s got=%s", want, got)
+	}
+
+	if want, got := def, srvSession.Def; !bytes.Equal(want, got) {
+		t.Errorf("server session token doesn't match: want=%v got=%v", want, got)
+	}
+
+	if want, got := 1, len(srvSession.LocalActors); want != got {
+		t.Errorf("server session local actor count doesn't match: want=%d got=%d", want, got)
 		return
 	}
 
-	if want, got := actor1Token, session.LocalActors[0].Actor.Token; want != got {
-		t.Errorf("session local actor token doesn't match: want=%d got=%d", want, got)
+	if want, got := actor1Token, srvSession.LocalActors[0].Actor.Token; want != got {
+		t.Errorf("server session local actor token doesn't match: want=%d got=%d", want, got)
 	}
 
-	if want, got := actor1Name, session.LocalActors[0].Actor.Name; want != got {
-		t.Errorf("session local actor name doesn't match: want=%s got=%s", want, got)
+	if want, got := actor1Name, srvSession.LocalActors[0].Actor.Name; want != got {
+		t.Errorf("server session local actor name doesn't match: want=%s got=%s", want, got)
 	}
 
-	if want, got := storyToken, session.LocalActors[0].Actor.Story.Token; want != got {
-		t.Errorf("session local actor story token doesn't match: want=%d got=%d", want, got)
+	if want, got := storyToken, srvSession.LocalActors[0].Actor.Story.Token; want != got {
+		t.Errorf("server session local actor story token doesn't match: want=%d got=%d", want, got)
 	}
 
-	if want, got := 1, len(session.Clients); want != got {
-		t.Errorf("session client count doesn't match: want=%d got=%d", want, got)
+	if want, got := 1, len(srvSession.Clients); want != got {
+		t.Errorf("server session client count doesn't match: want=%d got=%d", want, got)
 		return
 	}
 
-	if want, got := clientToken, session.Clients[0].Token; want != got {
-		t.Errorf("session client token doesn't match: want=%d got=%d", want, got)
+	if want, got := clientToken, srvSession.Clients[0].Token; want != got {
+		t.Errorf("server session client token doesn't match: want=%d got=%d", want, got)
 	}
 
-	if want, got := 1, len(session.Clients[0].Actors); want != got {
-		t.Errorf("session client actor count doesn't match: want=%d got=%d", want, got)
+	if want, got := 1, len(srvSession.Clients[0].Actors); want != got {
+		t.Errorf("server session client actor count doesn't match: want=%d got=%d", want, got)
 		return
 	}
 
-	if want, got := actor2Token, session.Clients[0].Actors[0].Token; want != got {
-		t.Errorf("session client actor token doesn't match: want=%d got=%d", want, got)
+	if want, got := actor2Token, srvSession.Clients[0].Actors[0].Token; want != got {
+		t.Errorf("server session client actor token doesn't match: want=%d got=%d", want, got)
 	}
 
-	if want, got := actor2Name, session.Clients[0].Actors[0].Name; want != got {
-		t.Errorf("session client actor name doesn't match: want=%s got=%s", want, got)
+	if want, got := actor2Name, srvSession.Clients[0].Actors[0].Name; want != got {
+		t.Errorf("server session client actor name doesn't match: want=%s got=%s", want, got)
 	}
 
-	if want, got := storyToken, session.Clients[0].Actors[0].Story.Token; want != got {
-		t.Errorf("session client actor story token doesn't match: want=%d got=%d", want, got)
+	if want, got := storyToken, srvSession.Clients[0].Actors[0].Story.Token; want != got {
+		t.Errorf("server session client actor story token doesn't match: want=%d got=%d", want, got)
 	}
 
-	if want, got := 1, len(session.Stories); want != got {
-		t.Errorf("session story count doesn't match: want=%d got=%d", want, got)
+	if want, got := 1, len(srvSession.Stories); want != got {
+		t.Errorf("server session story count doesn't match: want=%d got=%d", want, got)
 		return
 	}
 
-	if want, got := storyToken, session.Stories[0].StoryInfo.Token; want != got {
-		t.Errorf("session story token doesn't match: want=%d got=%d", want, got)
+	if want, got := storyToken, srvSession.Stories[0].StoryInfo.Token; want != got {
+		t.Errorf("server session story token doesn't match: want=%d got=%d", want, got)
 	}
 
-	_ = clientData
+	if want, got := 1, len(clientData); want != got {
+		t.Errorf("server client data contains wrong number of entries: want=%d got=%d", want, got)
+		return
+	}
 
-	cancel()
-	wgNodes.Wait()
+	if _, ok := clientData[clientToken]; !ok {
+		t.Error("client data is missing")
+		return
+	}
+
+	cancelServer()
+	wgServer.Wait()
+
+	cliSession := <-cliSessionCh
+
+	if cliSession == nil {
+		t.Error("client session is nil")
+		return
+	}
+
+	if want, got := lobbyToken, cliSession.Token; want != got {
+		t.Errorf("client session token doesn't match: want=%d got=%d", want, got)
+	}
+
+	if want, got := lobbyName, cliSession.Name; want != got {
+		t.Errorf("client session name doesn't match: want=%s got=%s", want, got)
+	}
+
+	if want, got := def, cliSession.Def; !bytes.Equal(want, got) {
+		t.Errorf("client session token doesn't match: want=%v got=%v", want, got)
+	}
+
+	if storiesMatch := slices.EqualFunc(srvSession.Stories, cliSession.Stories, func(ss server.Story, cs client.Story) bool {
+		return ss.StoryInfo.Token == cs.StoryInfo.Token
+	}); !storiesMatch {
+		t.Errorf("client session stories doesn't match server session stories: srv=%v cli=%v",
+			srvSession.Stories, cliSession.Stories)
+	}
+
+	if actorsMatch := slices.EqualFunc(srvSession.Clients[0].Actors, cliSession.Actors, func(sa server.Actor, ca client.Actor) bool {
+		return sa.Token == ca.Token && sa.Story.Token == ca.Story.Token
+	}); !actorsMatch {
+		t.Errorf("client session actors doesn't match server session actors: srv=%v cli=%v",
+			srvSession.Stories, cliSession.Stories)
+	}
+
+	cancelClient()
 }

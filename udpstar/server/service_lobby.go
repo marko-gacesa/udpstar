@@ -17,6 +17,7 @@ const lobbySendDelay = 10 * time.Millisecond
 type lobbyService struct {
 	Token message.Token
 	name  string
+	def   []byte
 
 	broadcastAddr net.UDPAddr
 	sender        Sender
@@ -44,6 +45,7 @@ func newLobbyService(
 	s := &lobbyService{
 		Token: setup.Token,
 		name:  setup.Name,
+		def:   setup.Def,
 
 		broadcastAddr: broadcastAddr,
 		sender:        udpSender,
@@ -392,6 +394,7 @@ func (s *lobbyService) getSetupMessage() lobbymessage.Setup {
 	msg := lobbymessage.Setup{
 		HeaderServer: lobbymessage.HeaderServer{LobbyToken: s.Token},
 		Name:         s.name,
+		Def:          s.def,
 		Slots:        make([]lobbymessage.Slot, len(s.slots)),
 	}
 
@@ -495,10 +498,12 @@ func (d *LobbySlot) clear() {
 }
 
 // lobbyToSession converts a lobby to session, but all channels are left unassigned (nil).
-func lobbyToSession(token message.Token, slots []LobbySlot) Session {
+func lobbyToSession(token message.Token, name string, def []byte, slots []LobbySlot) Session {
 	var session Session
 
 	session.Token = token
+	session.Name = name
+	session.Def = def
 
 	var lastStoryToken message.Token
 	for _, slot := range slots {
@@ -571,6 +576,7 @@ func (s *lobbyService) toLobby() udpstar.Lobby {
 	return udpstar.Lobby{
 		Version: s.version,
 		Name:    s.name,
+		Def:     s.def,
 		Slots:   slots,
 		State:   s.state,
 	}
@@ -679,6 +685,7 @@ type lobbyFinishReq struct {
 type lobbyFinishResp struct {
 	version   int
 	name      string
+	def       []byte
 	slots     []LobbySlot
 	clientMap map[message.Token]ClientData
 	state     lobbymessage.State
@@ -715,6 +722,7 @@ func (req lobbyFinishReq) process(s *lobbyService) bool {
 	req.responseCh <- lobbyFinishResp{
 		version:   s.version,
 		name:      s.name,
+		def:       s.def,
 		slots:     slots,
 		clientMap: clientMap,
 		state:     s.state,

@@ -3,6 +3,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
@@ -113,13 +114,16 @@ const durationRequestTimer = 3500 * time.Millisecond
 func (c *Lobby) Start(ctx context.Context) *Session {
 	finished := &atomic.Bool{}
 
+	ctxInternal, cancelInternal := context.WithCancel(ctx)
+
 	go func() {
+		defer close(c.doneCh)
+		defer cancelInternal()
 		select {
 		case <-c.finishTimer.C:
 			finished.Store(true)
 		case <-ctx.Done():
 		}
-		close(c.doneCh)
 	}()
 
 	go func() {
@@ -201,7 +205,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		c.pingSrv.Start(ctx)
+		c.pingSrv.Start(ctxInternal)
 	}()
 
 	wg.Wait()
@@ -220,25 +224,28 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 		return nil
 	}
 
-	result := new(Session)
-	result.Token = c.lobbyToken
-	result.ClientToken = c.clientToken
-	result.Stories = make([]Story, 0)
-	result.Actors = make([]Actor, 0)
+	session := new(Session)
+	session.Token = c.lobbyToken
+	session.Name = c.data.Name
+	session.Def = c.data.Def
+	session.ClientToken = c.clientToken
+	session.Stories = make([]Story, 0)
+	session.Actors = make([]Actor, 0)
 
 	setStory := map[message.Token]struct{}{}
 	for i := range c.data.Slots {
 		storyToken := c.data.Slots[i].StoryToken
 		_, ok := setStory[storyToken]
 		if !ok {
-			result.Stories = append(result.Stories, Story{
+			session.Stories = append(session.Stories, Story{
 				StoryInfo: StoryInfo{Token: storyToken},
 				Channel:   nil,
 			})
+			setStory[storyToken] = struct{}{}
 		}
 
 		if actorToken := c.data.Slots[i].ActorToken; actorToken != 0 {
-			result.Actors = append(result.Actors, Actor{
+			session.Actors = append(session.Actors, Actor{
 				Token:   actorToken,
 				Story:   StoryInfo{Token: storyToken},
 				InputCh: nil,
@@ -246,7 +253,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 		}
 	}
 
-	return result
+	return session
 }
 
 // HandleIncomingMessages handles incoming network messages intended for this client.
@@ -316,6 +323,7 @@ func (c *Lobby) Get(version int) (*udpstar.Lobby, time.Duration) {
 
 	result.Version = c.data.Version
 	result.Name = c.data.Name
+	result.Def = c.data.Def
 	result.Slots = slices.Clone(c.data.Slots)
 	result.State = c.data.State
 
@@ -402,6 +410,11 @@ func updateLobby(data *udpstar.Lobby, msg *lobbymessage.Setup) (changed bool) {
 	if data.Name != msg.Name {
 		changed = true
 		data.Name = msg.Name
+	}
+
+	if !bytes.Equal(data.Def, msg.Def) {
+		changed = true
+		data.Def = bytes.Clone(msg.Def)
 	}
 
 	n := len(msg.Slots)

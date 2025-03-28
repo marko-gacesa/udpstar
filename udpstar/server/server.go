@@ -347,7 +347,7 @@ func (s *Server) FinishLobby(
 		}
 	}
 
-	session := lobbyToSession(lobbyToken, responseFinish.slots)
+	session := lobbyToSession(lobbyToken, responseFinish.name, responseFinish.def, responseFinish.slots)
 	clientMap := responseFinish.clientMap
 
 	s.mx.Lock()

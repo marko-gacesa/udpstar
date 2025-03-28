@@ -14,6 +14,7 @@ const sizeServerBase = message.SizeOfPrefix +
 type Setup struct {
 	HeaderServer
 	Name  string
+	Def   []byte
 	Slots []Slot
 	State State
 }
@@ -31,6 +32,7 @@ var _ ServerMessage = (*Setup)(nil)
 func (m *Setup) Size() int {
 	size := sizeServerBase +
 		1 + len(m.Name) +
+		1 + len(m.Def) +
 		1 + // len slots
 		1 // state
 
@@ -47,6 +49,7 @@ func (m *Setup) Put(buf []byte) int {
 	s.PutCategory(CategoryLobby)
 	s.Put(&m.HeaderServer)
 	s.PutStr(m.Name)
+	s.PutBytes(m.Def)
 
 	s.Put8(byte(len(m.Slots)))
 	for i := range m.Slots {
@@ -69,6 +72,7 @@ func (m *Setup) Get(buf []byte) int {
 	}
 	s.Get(&m.HeaderServer)
 	s.GetStr(&m.Name)
+	s.GetBytes(&m.Def)
 
 	var l byte
 	s.Get8(&l)
