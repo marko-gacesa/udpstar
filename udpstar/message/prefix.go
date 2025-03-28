@@ -1,12 +1,9 @@
+// Copyright (c) 2024,2025 by Marko Gaćeša
+
 package message
 
 import "encoding/binary"
 
-var prefix uint32
+var prefix = binary.LittleEndian.Uint32([]byte("<u*>"))
 
 const SizeOfPrefix = 4
-
-func init() {
-	prefixBytes := []byte("<*>|")
-	prefix = binary.LittleEndian.Uint32(prefixBytes)
-}

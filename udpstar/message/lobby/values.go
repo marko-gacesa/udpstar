@@ -6,6 +6,9 @@ import "github.com/marko-gacesa/udpstar/udpstar/message"
 
 const (
 	CategoryLobby message.Category = 2
+
+	MaxLenName = 32
+	MaxLenDef  = 63
 )
 
 type SlotAvailability byte

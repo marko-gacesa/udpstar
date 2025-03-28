@@ -122,7 +122,7 @@ func (c *Client) Start(ctx context.Context) {
 			msg.SetLatency(c.pingSrv.Latency())
 
 			size := msg.Put(buffer[:])
-			if size > storymessage.MaxMessageSize {
+			if size > message.MaxMessageSize {
 				c.log.Warn("sending large message",
 					"size", size)
 			}

@@ -49,7 +49,7 @@ func TestLenStoryConfirm(t *testing.T) {
 	size := msg.Put(buf[:])
 
 	t.Logf("maximum size of StoryConfirm: %d", size)
-	if size > MaxMessageSize {
+	if size > message.MaxMessageSize {
 		t.Errorf("too large: %d", size)
 	}
 }
@@ -68,7 +68,7 @@ func TestLenLatencyReport(t *testing.T) {
 	size := msg.Put(buf[:])
 
 	t.Logf("maximum size of LatencyReport: %d", size)
-	if size > MaxMessageSize {
+	if size > message.MaxMessageSize {
 		t.Errorf("too large: %d", size)
 	}
 }

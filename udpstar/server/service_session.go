@@ -187,7 +187,7 @@ func (s *sessionService) start(ctx context.Context) error {
 					storyEntries = append(storyEntries, entry)
 
 					msg.Stories = storyEntries
-					if msg.Size() < storymessage.MaxMessageSize {
+					if msg.Size() < message.MaxMessageSize {
 						return true
 					}
 

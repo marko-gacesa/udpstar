@@ -9,7 +9,6 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
-	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"slices"
@@ -153,7 +152,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 			msg.SetLatency(c.pingSrv.Latency())
 
 			size := msg.Put(buffer[:])
-			if size > storymessage.MaxMessageSize {
+			if size > message.MaxMessageSize {
 				c.log.Warn("sending large message",
 					"size", size)
 			}
