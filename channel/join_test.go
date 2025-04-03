@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package channel
 
@@ -39,7 +39,7 @@ func TestChannel(t *testing.T) {
 		close(bCh)
 	}()
 
-	chOut := Join[int, string](chInput)
+	chOut := Join[int, string](nil, chInput)
 	var got []Result[int, string]
 	for res := range chOut {
 		got = append(got, res)
@@ -112,7 +112,7 @@ func TestJoinSlice(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ch := JoinSlicePtr(test.input, func(el *testStruct) <-chan int {
+			ch := JoinSlicePtr(nil, test.input, func(el *testStruct) <-chan int {
 				return el.ch
 			})
 
@@ -174,7 +174,7 @@ func TestJoinMap(t *testing.T) {
 
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			ch := JoinMap(test.input, func(el chan int) <-chan int {
+			ch := JoinMap(nil, test.input, func(el chan int) <-chan int {
 				return el
 			})
 

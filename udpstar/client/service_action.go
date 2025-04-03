@@ -45,11 +45,11 @@ func newActionService(
 func (s *actionService) Start(ctx context.Context) {
 	const pushbackDelay = 30 * time.Millisecond
 
-	actorActionCh := channel.Context(ctx, channel.JoinSlicePtr(s.actorActions, func(actor *actorAction) <-chan []byte {
+	actorActionCh := channel.Context(ctx, channel.JoinSlicePtr(s.doneCh, s.actorActions, func(actor *actorAction) <-chan []byte {
 		return actor.InputCh
 	}))
 
-	resendTimerCh := channel.JoinSlicePtr(s.actorActions, func(actor *actorAction) <-chan time.Time {
+	resendTimerCh := channel.JoinSlicePtr(s.doneCh, s.actorActions, func(actor *actorAction) <-chan time.Time {
 		return actor.resend.C
 	})
 

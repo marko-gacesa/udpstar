@@ -3,7 +3,6 @@
 package controller
 
 import (
-	"context"
 	"time"
 )
 
@@ -13,6 +12,6 @@ const (
 )
 
 type Controller interface {
-	Suspend(context.Context)
-	Resume(context.Context)
+	Suspend()
+	Resume()
 }

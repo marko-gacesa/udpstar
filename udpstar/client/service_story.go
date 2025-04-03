@@ -44,7 +44,7 @@ func newStoryService(
 func (s *storyService) Start(ctx context.Context) {
 	const requestDelay = time.Second
 
-	requestTimer := channel.JoinSlice(s.storyStreams, func(story *storyStream) <-chan time.Time {
+	requestTimer := channel.JoinSlice(s.doneCh, s.storyStreams, func(story *storyStream) <-chan time.Time {
 		return story.request.C
 	})
 

@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package channel
 
@@ -17,6 +17,7 @@ type Input[C, ID any] struct {
 }
 
 func Join[C any, ID any](
+	stopCh <-chan struct{},
 	inputCh <-chan Input[C, ID],
 ) <-chan Result[C, ID] {
 	ch := make(chan Result[C, ID])
@@ -30,10 +31,15 @@ func Join[C any, ID any](
 		wg.Add(1)
 		go func(elemCh <-chan C, id ID) {
 			defer wg.Done()
-			for data := range elemCh {
-				ch <- Result[C, ID]{
-					Data: data,
-					ID:   id,
+			for {
+				select {
+				case <-stopCh:
+					return
+				case data, ok := <-elemCh:
+					if !ok {
+						return
+					}
+					ch <- Result[C, ID]{Data: data, ID: id}
 				}
 			}
 		}(elem.Ch, elem.ID)
@@ -48,6 +54,7 @@ func Join[C any, ID any](
 }
 
 func JoinSlice[C any, V any](
+	stopCh <-chan struct{},
 	array []V,
 	getChFn func(V) <-chan C,
 ) <-chan Result[C, int] {
@@ -61,10 +68,11 @@ func JoinSlice[C any, V any](
 			}
 		}
 	}()
-	return Join(inputCh)
+	return Join(stopCh, inputCh)
 }
 
 func JoinSlicePtr[C any, V any](
+	stopCh <-chan struct{},
 	array []V,
 	getChFn func(*V) <-chan C,
 ) <-chan Result[C, int] {
@@ -78,10 +86,11 @@ func JoinSlicePtr[C any, V any](
 			}
 		}
 	}()
-	return Join(inputCh)
+	return Join(stopCh, inputCh)
 }
 
 func JoinMap[C any, K comparable, V any](
+	stopCh <-chan struct{},
 	dict map[K]V,
 	getChFn func(V) <-chan C,
 ) <-chan Result[C, K] {
@@ -95,5 +104,5 @@ func JoinMap[C any, K comparable, V any](
 			}
 		}
 	}()
-	return Join(inputCh)
+	return Join(stopCh, inputCh)
 }

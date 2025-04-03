@@ -120,11 +120,11 @@ func (s *sessionService) Start(ctx context.Context) error {
 }
 
 func (s *sessionService) start(ctx context.Context) error {
-	storyEntryCh := channel.Context(ctx, channel.JoinSlicePtr(s.stories, func(story *storyData) <-chan []byte {
+	storyEntryCh := channel.Context(ctx, channel.JoinSlicePtr(nil, s.stories, func(story *storyData) <-chan []byte {
 		return story.Channel
 	}))
 
-	localActorActionCh := channel.Context(ctx, channel.JoinSlicePtr(s.localActors, func(actor *localActorData) <-chan []byte {
+	localActorActionCh := channel.Context(ctx, channel.JoinSlicePtr(nil, s.localActors, func(actor *localActorData) <-chan []byte {
 		return actor.InputCh
 	}))
 
@@ -325,9 +325,9 @@ func (s *sessionService) updateState(ctx context.Context) *storymessage.LatencyR
 
 	if s.controller != nil {
 		if s.state == SessionStateNotInSync && newState != SessionStateNotInSync {
-			s.controller.Resume(ctx)
+			s.controller.Resume()
 		} else if s.state != SessionStateNotInSync && newState == SessionStateNotInSync {
-			s.controller.Suspend(ctx)
+			s.controller.Suspend()
 		}
 	}
 
