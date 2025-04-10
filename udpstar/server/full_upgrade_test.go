@@ -48,11 +48,7 @@ func TestUpgrade(t *testing.T) {
 		//server.WithBroadcastAddress(net.UDPAddr{IP: broadcastAddr}),
 	)
 
-	cli, err := client.NewLobby(clientSender, lobbyToken, clientToken, client.WithLobbyLogger(l))
-	if err != nil {
-		t.Errorf("failed to create client lobby: %s", err.Error())
-		return
-	}
+	cli := client.NewLobby(clientSender, lobbyToken, clientToken, client.WithLobbyLogger(l))
 
 	serverSender.SetHandler(srv.HandleIncomingMessages)
 	clientSender.SetHandler(cli.HandleIncomingMessages)
@@ -63,7 +59,7 @@ func TestUpgrade(t *testing.T) {
 	ctxClient, cancelClient := context.WithCancel(context.Background())
 	defer cancelClient()
 
-	err = srv.StartLobby(ctxServer, &server.LobbySetup{
+	err := srv.StartLobby(ctxServer, &server.LobbySetup{
 		Token:       lobbyToken,
 		Name:        lobbyName,
 		Def:         def,

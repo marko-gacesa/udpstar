@@ -69,7 +69,7 @@ func NewLobby(
 	lobbyToken message.Token,
 	clientToken message.Token,
 	opts ...func(*Lobby),
-) (*Lobby, error) {
+) *Lobby {
 	c := &Lobby{
 		lobbyToken:   lobbyToken,
 		clientToken:  clientToken,
@@ -93,7 +93,7 @@ func NewLobby(
 
 	c.finishTimer.Stop()
 
-	return c, nil
+	return c
 }
 
 var WithLobbyLogger = func(log *slog.Logger) func(*Lobby) {

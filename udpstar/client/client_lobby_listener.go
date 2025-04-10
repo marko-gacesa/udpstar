@@ -41,7 +41,7 @@ type LobbyListener struct {
 func NewLobbyListener(
 	clientToken message.Token,
 	opts ...func(listener *LobbyListener),
-) (*LobbyListener, error) {
+) *LobbyListener {
 	c := &LobbyListener{
 		clientToken: clientToken,
 		doneCh:      make(chan struct{}),
@@ -53,7 +53,7 @@ func NewLobbyListener(
 
 	c.log = c.log.With("client", c.clientToken)
 
-	return c, nil
+	return c
 }
 
 var WithLobbyListenerLogger = func(log *slog.Logger) func(listener *LobbyListener) {

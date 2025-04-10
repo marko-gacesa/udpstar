@@ -52,17 +52,8 @@ func TestLobby(t *testing.T) {
 		//server.WithBroadcastAddress(net.UDPAddr{IP: broadcastAddr}),
 	)
 
-	cli1, err := client.NewLobby(node1Sender, lobbyToken, client1Token, client.WithLobbyLogger(l))
-	if err != nil {
-		t.Errorf("failed to start client 1: %s", err.Error())
-		return
-	}
-
-	cli2, err := client.NewLobby(node2Sender, lobbyToken, client2Token, client.WithLobbyLogger(l))
-	if err != nil {
-		t.Errorf("failed to start client 2: %s", err.Error())
-		return
-	}
+	cli1 := client.NewLobby(node1Sender, lobbyToken, client1Token, client.WithLobbyLogger(l))
+	cli2 := client.NewLobby(node2Sender, lobbyToken, client2Token, client.WithLobbyLogger(l))
 
 	serverSender.SetHandler(srv.HandleIncomingMessages)
 	node1Sender.SetHandler(cli1.HandleIncomingMessages)
@@ -71,7 +62,7 @@ func TestLobby(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	err = srv.StartLobby(ctx, &server.LobbySetup{
+	err := srv.StartLobby(ctx, &server.LobbySetup{
 		Token:       lobbyToken,
 		Name:        lobbyName,
 		Def:         def,
