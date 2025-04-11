@@ -20,7 +20,7 @@ var _ interface {
 	HandleBroadcastMessages(data []byte, addr net.UDPAddr)
 
 	// List returns the lobbies.
-	List(version int) []udpstar.LobbyListenerInfo
+	List(version int) ([]udpstar.LobbyListenerInfo, int)
 } = (*LobbyListener)(nil)
 
 //******************************************************************************
@@ -65,21 +65,22 @@ var WithLobbyListenerLogger = func(log *slog.Logger) func(listener *LobbyListene
 }
 
 // List returns the lobbies.
-func (c *LobbyListener) List(version int) []udpstar.LobbyListenerInfo {
+func (c *LobbyListener) List(version int) ([]udpstar.LobbyListenerInfo, int) {
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
 
 	if version == c.version {
-		return nil
+		return nil, c.version
 	}
 
 	list := make([]udpstar.LobbyListenerInfo, len(c.data))
 	for i := range c.data {
+		list[i].Token = c.data[i].LobbyToken
 		list[i].Lobby = c.data[i].Lobby
 		list[i].State = c.data[i].State
 	}
 
-	return list
+	return list, c.version
 }
 
 // HandleBroadcastMessages handles incoming broadcast network messages.

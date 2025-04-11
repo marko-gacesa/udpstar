@@ -17,7 +17,7 @@ import (
 func ListenMulticast(
 	ctx context.Context,
 	groupAddr net.UDPAddr,
-	processFn func(addr net.UDPAddr, data []byte),
+	processFn func(data []byte, addr net.UDPAddr),
 ) (err error) {
 	durBreak := durBreakDefault
 
@@ -96,7 +96,7 @@ func ListenMulticast(
 			return
 		}
 
-		processFn(*addr, buffer[:n])
+		processFn(buffer[:n], *addr)
 	}
 }
 

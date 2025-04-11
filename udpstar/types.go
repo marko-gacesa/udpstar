@@ -78,6 +78,7 @@ const (
 )
 
 type LobbyListenerInfo struct {
+	Token message.Token
 	Lobby Lobby
 	State LobbyListenerState
 }
