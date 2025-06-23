@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023,2025 by Marko Gaćeša
 
 package udp
 
@@ -7,26 +7,26 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"sync"
 	"time"
 )
 
 var _ = interface {
-	Listen(ctx context.Context, processFn func([]byte, net.UDPAddr) []byte) error
+	Listen(ctx context.Context, port int, processFn func([]byte, net.UDPAddr) []byte) error
 	Send(data []byte, addr net.UDPAddr) error
 }((*Server)(nil))
 
 const durBreakDefault = 5 * time.Second
 
 type Server struct {
-	port        int
 	connection  *net.UDPConn
 	durBreak    time.Duration
 	handleError func(error)
+	mx          sync.Mutex
 }
 
-func NewServer(port int) *Server {
+func NewServer() *Server {
 	return &Server{
-		port:     port,
 		durBreak: durBreakDefault,
 		handleError: func(err error) {
 			log.Println(err)
@@ -54,21 +54,23 @@ func (s *Server) SetBreakPeriod(durBreak time.Duration) {
 	s.durBreak = durBreak
 }
 
-func (s *Server) Listen(ctx context.Context, processFn func(data []byte, addr net.UDPAddr) []byte) (err error) {
+func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byte, addr net.UDPAddr) []byte) (err error) {
 	addr := &net.UDPAddr{
 		IP:   nil,
-		Port: s.port,
+		Port: port,
 	}
 
 	var connection *net.UDPConn
 
 	connection, err = net.ListenUDP("udp", addr)
 	if err != nil {
-		err = fmt.Errorf("udp server: failed to listen: %w", err)
+		err = fmt.Errorf("udp server: failed to listen: %w", FailedToStartError{err})
 		return
 	}
 
+	s.mx.Lock()
 	s.connection = connection
+	s.mx.Unlock()
 
 	defer func() {
 		errClose := connection.Close()
@@ -133,7 +135,15 @@ func (s *Server) Listen(ctx context.Context, processFn func(data []byte, addr ne
 }
 
 func (s *Server) Send(data []byte, addr net.UDPAddr) error {
-	_, err := s.connection.WriteToUDP(data, &addr)
+	s.mx.Lock()
+	connection := s.connection
+	s.mx.Unlock()
+
+	if connection == nil {
+		return fmt.Errorf("udp server: connection is nil")
+	}
+
+	_, err := connection.WriteToUDP(data, &addr)
 	if err != nil {
 		err = fmt.Errorf("udp server: failed to send message to %s: %w", addr.String(), err)
 		return err
@@ -141,3 +151,10 @@ func (s *Server) Send(data []byte, addr net.UDPAddr) error {
 
 	return nil
 }
+
+type FailedToStartError struct {
+	inner error
+}
+
+func (e FailedToStartError) Error() string { return e.inner.Error() }
+func (e FailedToStartError) Unwrap() error { return e.inner }
