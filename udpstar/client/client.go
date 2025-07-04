@@ -167,7 +167,7 @@ func (c *Client) Start(ctx context.Context) {
 	close(c.pingCh)
 	close(c.sendCh)
 
-	c.log.Info("client stopped")
+	c.log.Debug("client stopped")
 }
 
 // HandleIncomingMessages handles incoming network messages intended for this client.
@@ -223,7 +223,6 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 
 	case storymessage.TypeLatencyReport:
 		msgLatencyRep := msg.(*storymessage.LatencyReport)
-		c.log.Info("received latency report")
 
 		c.latencyMx.Lock()
 		c.latencies.Version++

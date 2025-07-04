@@ -19,6 +19,10 @@ func ListenMulticast(
 	groupAddr net.UDPAddr,
 	processFn func(data []byte, addr net.UDPAddr),
 ) (err error) {
+	if groupAddr.IP == nil || !groupAddr.IP.IsMulticast() {
+		return errors.New("udp multicast: group address is not multicast")
+	}
+
 	durBreak := durBreakDefault
 
 	iface, err := getDefaultInterface()
@@ -26,7 +30,13 @@ func ListenMulticast(
 		return fmt.Errorf("udp multicast: failed to get network interface: %w", err)
 	}
 
-	conn, err := net.ListenUDP("udp", &groupAddr)
+	addrListen := net.UDPAddr{
+		IP:   groupAddr.IP,
+		Port: groupAddr.Port,
+		Zone: iface.Name,
+	}
+
+	conn, err := net.ListenUDP("udp", &addrListen)
 	if err != nil {
 		return fmt.Errorf("udp multicast: failed to listen: %w", err)
 	}
@@ -38,23 +48,29 @@ func ListenMulticast(
 		}
 	}()
 
+	addr := net.UDPAddr{
+		IP:   groupAddr.IP,
+		Port: 0,
+		Zone: iface.Name,
+	}
+
 	var p interface {
 		JoinGroup(*net.Interface, net.Addr) error
 		LeaveGroup(*net.Interface, net.Addr) error
 	}
-	if ip4 := groupAddr.IP.To4(); ip4 != nil {
+	if ip4 := addr.IP.To4(); ip4 != nil {
 		p = ipv4.NewPacketConn(conn)
 	} else {
 		p = ipv6.NewPacketConn(conn)
 	}
 
-	err = p.JoinGroup(iface, &groupAddr)
+	err = p.JoinGroup(iface, &addr)
 	if err != nil {
 		return fmt.Errorf("udp multicast: failed to join group: %w", err)
 	}
 
 	defer func() {
-		errLeave := p.LeaveGroup(iface, &groupAddr)
+		errLeave := p.LeaveGroup(iface, &addr)
 		if errLeave != nil && err == nil {
 			err = fmt.Errorf("udp multicast: failed to leave group: %w", errLeave)
 		}

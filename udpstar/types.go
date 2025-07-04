@@ -6,6 +6,7 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
+	"net"
 	"time"
 )
 
@@ -77,8 +78,24 @@ const (
 	LobbyListenerStateStale  LobbyListenerState = 3
 )
 
+func (s LobbyListenerState) String() string {
+	switch s {
+	case LobbyListenerStateFresh:
+		return "Fresh"
+	case LobbyListenerStateRecent:
+		return "Recent"
+	case LobbyListenerStateOld:
+		return "Old"
+	case LobbyListenerStateStale:
+		return "Stale"
+	default:
+		return "?"
+	}
+}
+
 type LobbyListenerInfo struct {
 	Token message.Token
 	Lobby Lobby
 	State LobbyListenerState
+	Addr  net.UDPAddr
 }

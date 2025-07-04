@@ -22,6 +22,25 @@ const (
 	SlotRemote    SlotAvailability = 128
 )
 
+func (s SlotAvailability) String() string {
+	switch s {
+	case SlotAvailable:
+		return "available"
+	case SlotLocal0:
+		return "local0"
+	case SlotLocal1:
+		return "local1"
+	case SlotLocal2:
+		return "local2"
+	case SlotLocal3:
+		return "local3"
+	case SlotRemote:
+		return "remote"
+	default:
+		return "?"
+	}
+}
+
 type State byte
 
 const (
@@ -32,3 +51,22 @@ const (
 	StateStarting2 State = 0x82
 	StateStarting3 State = 0x83
 )
+
+func (s State) String() string {
+	switch s {
+	case StateActive:
+		return "active"
+	case StateReady:
+		return "ready"
+	case StateStarting:
+		return "starting"
+	case StateStarting1:
+		return "starting1"
+	case StateStarting2:
+		return "starting2"
+	case StateStarting3:
+		return "starting3"
+	default:
+		return "?"
+	}
+}

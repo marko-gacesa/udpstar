@@ -122,6 +122,14 @@ func (s *lobbyService) Start(ctx context.Context) error {
 				}
 			}
 
+			// Update the version if there are remotes, because latency might change.
+			for i := range s.slots {
+				if s.slots[i].isRemote() {
+					s.version++
+					break
+				}
+			}
+
 		case command := <-s.commandCh:
 			changed := command.process(s)
 			if !changed {
@@ -133,10 +141,6 @@ func (s *lobbyService) Start(ctx context.Context) error {
 
 			// Reset broadcast timer
 			broadcastTimer.Stop()
-			select {
-			case <-broadcastTimer.C:
-			default:
-			}
 			broadcastTimer.Reset(lobbySendDelay)
 		}
 	}

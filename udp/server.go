@@ -19,7 +19,9 @@ var _ = interface {
 const durBreakDefault = 5 * time.Second
 
 type Server struct {
-	connection  *net.UDPConn
+	connection     *net.UDPConn
+	connectingDone chan struct{}
+
 	durBreak    time.Duration
 	handleError func(error)
 	mx          sync.Mutex
@@ -27,6 +29,9 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
+		connection:     nil,
+		connectingDone: make(chan struct{}),
+
 		durBreak: durBreakDefault,
 		handleError: func(err error) {
 			log.Println(err)
@@ -60,10 +65,16 @@ func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byt
 		Port: port,
 	}
 
+	return s.ListenAddr(ctx, addr, processFn)
+}
+
+func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn func(data []byte, addr net.UDPAddr) []byte) (err error) {
 	var connection *net.UDPConn
 
 	connection, err = net.ListenUDP("udp", addr)
 	if err != nil {
+		close(s.connectingDone)
+
 		err = fmt.Errorf("udp server: failed to listen: %w", FailedToStartError{err})
 		return
 	}
@@ -72,7 +83,13 @@ func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byt
 	s.connection = connection
 	s.mx.Unlock()
 
+	close(s.connectingDone)
+
 	defer func() {
+		s.mx.Lock()
+		s.connection = nil
+		s.mx.Unlock()
+
 		errClose := connection.Close()
 		if errClose != nil {
 			errClose = fmt.Errorf("udp server: failed to close listener: %w", err)
@@ -150,6 +167,12 @@ func (s *Server) Send(data []byte, addr net.UDPAddr) error {
 	}
 
 	return nil
+}
+
+func (s *Server) getConnection() *net.UDPConn {
+	s.mx.Lock()
+	defer s.mx.Unlock()
+	return s.connection
 }
 
 type FailedToStartError struct {

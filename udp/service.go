@@ -26,12 +26,26 @@ var (
 type ServerState byte
 
 const (
-	Started ServerState = 0
-	Stopped ServerState = 1
-	Failed  ServerState = 2
+	Starting ServerState = iota
+	Started
+	Stopped
+	Failed
 )
 
-const durStartAwait = 100 * time.Millisecond
+func (s ServerState) String() string {
+	switch s {
+	case Starting:
+		return "starting"
+	case Started:
+		return "started"
+	case Stopped:
+		return "stopped"
+	case Failed:
+		return "failed"
+	default:
+		return "unknown"
+	}
+}
 
 type Service struct {
 	mainDone    <-chan struct{}
@@ -51,6 +65,7 @@ type Service struct {
 
 	udpServer     *Server
 	udpServerStop context.CancelFunc
+	udpServerDone <-chan struct{}
 }
 
 func NewService(mainCtx context.Context, port int, options ...func(*Service)) *Service {
@@ -61,7 +76,7 @@ func NewService(mainCtx context.Context, port int, options ...func(*Service)) *S
 		mainDone:    mainCtx.Done(),
 		port:        port,
 		handlerCh:   make(chan handler),
-		serverRunCh: make(chan struct{}, 1),
+		serverRunCh: make(chan struct{}),
 		timer:       t,
 		mx:          sync.Mutex{},
 		wg:          sync.WaitGroup{},
@@ -71,6 +86,10 @@ func NewService(mainCtx context.Context, port int, options ...func(*Service)) *S
 
 	for _, option := range options {
 		option(s)
+	}
+
+	if s.serverStateCallback == nil {
+		s.serverStateCallback = func(s ServerState, err error) {}
 	}
 
 	s.wg.Add(3)
@@ -134,6 +153,7 @@ func (s *Service) Send(data []byte, addr net.UDPAddr) error {
 	s.mx.Unlock()
 
 	if udpServer == nil {
+		s.logger.Debug("package not sent - server not running", "addr", addr)
 		return ErrNotRunning
 	}
 
@@ -168,6 +188,7 @@ func (s *Service) acceptHandler(h handler) {
 	s.handler = h.fn
 	s.mx.Unlock()
 
+	// wait for handler to finish
 	select {
 	case <-s.mainDone:
 		return
@@ -178,6 +199,7 @@ func (s *Service) acceptHandler(h handler) {
 	s.handler = nil
 	s.mx.Unlock()
 
+	// reset the idle server time, after this the server will shut down
 	s.timer.Reset(s.idleTimeout)
 }
 
@@ -188,13 +210,15 @@ func (s *Service) runServerLoop() {
 		case <-s.mainDone:
 			return
 		case <-s.serverRunCh:
+			s.runServer()
 		}
-
-		s.runServer()
 	}
 }
 
 func (s *Service) runServer() {
+	s.serverStateCallback(Starting, nil)
+	s.logger.Debug("udp server starting", "port", s.port)
+
 	ctx, udpServerStop := context.WithCancel(context.Background())
 
 	go func() {
@@ -214,9 +238,19 @@ func (s *Service) runServer() {
 	s.mx.Lock()
 	s.udpServer = udpServer
 	s.udpServerStop = udpServerStop
+	s.udpServerDone = ctx.Done()
 	s.mx.Unlock()
 
-	t := s.callbackStart(ctx)
+	go func() {
+		select {
+		case <-s.mainDone:
+		case <-ctx.Done():
+		case <-udpServer.connectingDone:
+			if udpServer.getConnection() != nil {
+				s.serverStateCallback(Started, nil)
+			}
+		}
+	}()
 
 	err := udpServer.Listen(ctx, s.port, func(data []byte, addr net.UDPAddr) []byte {
 		defer util.Recover(s.logger)
@@ -232,47 +266,19 @@ func (s *Service) runServer() {
 		return h(data, addr)
 	})
 	if err != nil && !errors.Is(err, context.Canceled) {
+		s.serverStateCallback(Failed, err)
 		s.logger.Error("UDP server failed", "err", err.Error())
+	} else {
+		s.serverStateCallback(Stopped, err)
 	}
-
-	s.callbackStop(t, err)
 
 	s.timerStop()
 
 	s.mx.Lock()
 	s.udpServer = nil
 	s.udpServerStop = nil
+	s.udpServerDone = nil
 	s.mx.Unlock()
-}
-
-func (s *Service) callbackStart(ctx context.Context) *time.Timer {
-	var t *time.Timer
-	if s.serverStateCallback != nil {
-		t = time.NewTimer(durStartAwait)
-		go func() {
-			select {
-			case <-s.mainDone:
-			case <-ctx.Done():
-			case <-t.C:
-				s.serverStateCallback(Started, nil)
-			}
-		}()
-	}
-	return t
-}
-
-func (s *Service) callbackStop(t *time.Timer, err error) {
-	if t == nil {
-		return
-	}
-
-	aborted := t.Stop()
-	var errFailed FailedToStartError
-	if errors.As(err, &errFailed) {
-		s.serverStateCallback(Failed, err)
-	} else if !aborted {
-		s.serverStateCallback(Stopped, err)
-	}
 }
 
 func (s *Service) timerLoop() {

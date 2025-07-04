@@ -216,7 +216,7 @@ func (s *Server) startSession(
 
 		err := sessionSrv.Start(ctx)
 		if err == nil || errors.Is(err, context.Canceled) {
-			s.log.Info("session stopped",
+			s.log.Debug("session stopped",
 				"session", session.Token)
 		} else {
 			s.log.Error("session aborted",
@@ -271,7 +271,7 @@ func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
 
 		err := lobbySrv.Start(ctx)
 		if err == nil || errors.Is(err, context.Canceled) {
-			s.log.Info("lobby stopped",
+			s.log.Debug("lobby stopped",
 				"lobby", lobbySrv.Token)
 		} else {
 			s.log.Error("lobby aborted",
@@ -369,7 +369,7 @@ func (s *Server) GetLobby(lobbyToken message.Token, version int) (*udpstar.Lobby
 
 	response, ok := <-resultCh
 	if !ok {
-		return nil, ErrUnknownLobby
+		return nil, nil
 	}
 
 	return &response, nil
@@ -415,6 +415,27 @@ func (s *Server) Evict(lobbyToken, actorToken message.Token) error {
 	}
 
 	lobbySrv.Evict(actorToken)
+
+	return nil
+}
+
+func (s *Server) EvictIdx(lobbyToken message.Token, slotIdx byte) error {
+	lobbySrv := s.getLobby(lobbyToken)
+	if lobbySrv == nil {
+		return ErrUnknownLobby
+	}
+
+	if int(slotIdx) >= len(lobbySrv.slots) {
+		return nil
+	}
+
+	slot := lobbySrv.slots[slotIdx]
+
+	if slot.Availability == udpstar.SlotAvailable {
+		return nil
+	}
+
+	lobbySrv.Evict(slot.ActorToken)
 
 	return nil
 }

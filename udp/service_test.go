@@ -24,18 +24,19 @@ func TestServiceSimple(t *testing.T) {
 
 	const port = 45286
 	const pause = 10 * time.Millisecond
-	const idleTimeout = 200 * time.Millisecond
+	const idleTimeout = 20 * time.Second
 
 	var got []string
 	expected := []string{msg1, msg2, strings.ToUpper(msg3)}
 
 	var gotStates []ServerState
-	expectedStates := []ServerState{Started, Stopped}
+	expectedStates := []ServerState{Starting, Started, Stopped}
 	var mxState sync.Mutex
 
 	srv := NewService(ctxMain, port,
 		WithLogger(slog.Default()),
 		WithIdleTimeout(idleTimeout),
+		WithServerBreakPeriod(500*time.Millisecond),
 		WithServerStateCallback(func(state ServerState, err error) {
 			mxState.Lock()
 			gotStates = append(gotStates, state)
@@ -88,7 +89,7 @@ func TestServiceSimple(t *testing.T) {
 
 	test1Stop() // abort the first handler
 
-	time.Sleep(pause + durStartAwait)
+	time.Sleep(pause)
 
 	// Adding the third handler - should succeed
 

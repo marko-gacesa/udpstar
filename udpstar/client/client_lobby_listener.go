@@ -19,6 +19,9 @@ var _ interface {
 	// HandleBroadcastMessages handles incoming broadcast network messages.
 	HandleBroadcastMessages(data []byte, addr net.UDPAddr)
 
+	// Refresh updates the data based on the elapsed time.
+	Refresh() bool
+
 	// List returns the lobbies.
 	List(version int) ([]udpstar.LobbyListenerInfo, int)
 } = (*LobbyListener)(nil)
@@ -78,6 +81,7 @@ func (c *LobbyListener) List(version int) ([]udpstar.LobbyListenerInfo, int) {
 		list[i].Token = c.data[i].LobbyToken
 		list[i].Lobby = c.data[i].Lobby
 		list[i].State = c.data[i].State
+		list[i].Addr = c.data[i].Addr
 	}
 
 	return list, c.version
@@ -104,7 +108,11 @@ func (c *LobbyListener) HandleBroadcastMessages(data []byte, addr net.UDPAddr) {
 	c.updateData(msgSetup, addr)
 }
 
-func (c *LobbyListener) updateData(msg *lobbymessage.Setup, addr net.UDPAddr) {
+func (c *LobbyListener) Refresh() bool {
+	return c.updateData(nil, net.UDPAddr{})
+}
+
+func (c *LobbyListener) updateData(msg *lobbymessage.Setup, addr net.UDPAddr) bool {
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
 
@@ -112,10 +120,14 @@ func (c *LobbyListener) updateData(msg *lobbymessage.Setup, addr net.UDPAddr) {
 
 	var found, changed bool
 
+	if msg == nil {
+		found = true
+	}
+
 	for i := 0; i < len(c.data); {
 		newState := udpstar.LobbyListenerStateFresh
 
-		if c.data[i].IsSameLobby(addr, msg.LobbyToken) {
+		if msg != nil && c.data[i].IsSameLobby(addr, msg.LobbyToken) {
 			found = true
 			c.data[i].LatestTime = now
 			changed = changed || updateLobby(&c.data[i].Lobby, msg)
@@ -131,17 +143,18 @@ func (c *LobbyListener) updateData(msg *lobbymessage.Setup, addr net.UDPAddr) {
 			}
 		}
 
-		if newState == udpstar.LobbyListenerStateStale {
-			c.data = c.data[:i+copy(c.data[i:], c.data[i+1:])]
-			continue
-		}
-
-		i++
-
 		if c.data[i].State != newState {
 			c.data[i].State = newState
 			changed = true
 		}
+
+		if newState == udpstar.LobbyListenerStateStale {
+			c.data = c.data[:i+copy(c.data[i:], c.data[i+1:])]
+			changed = true
+			continue
+		}
+
+		i++
 	}
 
 	if !found {
@@ -156,12 +169,15 @@ func (c *LobbyListener) updateData(msg *lobbymessage.Setup, addr net.UDPAddr) {
 			State:      udpstar.LobbyListenerStateFresh,
 		}
 		updateLobby(&entry.Lobby, msg)
+		c.data = append(c.data, entry)
 		changed = true
 	}
 
 	if changed {
 		c.version++
 	}
+
+	return changed
 }
 
 type listenerEntry struct {

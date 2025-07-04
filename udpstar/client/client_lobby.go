@@ -214,7 +214,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	close(c.pingCh)
 	close(c.sendCh)
 
-	c.log.Info("lobby client stopped")
+	c.log.Debug("lobby client stopped")
 
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
