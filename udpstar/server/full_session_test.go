@@ -36,6 +36,10 @@ func TestSession(t *testing.T) {
 	actor3Token := message.Token(3) // @ client 1
 	actor4Token := message.Token(4) // @ client 2
 
+	actor2Config := []byte{2}
+	actor3Config := []byte{3}
+	actor4Config := []byte{4}
+
 	storyChannel := make(chan []byte)
 	actor1InputChannel := make(chan []byte)
 	actor2InputChannel := make(chan []byte)
@@ -61,6 +65,7 @@ func TestSession(t *testing.T) {
 				Actor: server.Actor{
 					Token:   actor1Token,
 					Name:    "actor1-local",
+					Config:  nil,
 					Story:   server.StoryInfo{Token: storyToken},
 					Channel: recActor1.Record(ctx),
 				},
@@ -74,12 +79,14 @@ func TestSession(t *testing.T) {
 					{
 						Token:   actor2Token,
 						Name:    "actor2@cli1",
+						Config:  actor2Config,
 						Story:   server.StoryInfo{Token: storyToken},
 						Channel: recActor2.Record(ctx),
 					},
 					{
 						Token:   actor3Token,
 						Name:    "actor3@cli1",
+						Config:  actor3Config,
 						Story:   server.StoryInfo{Token: storyToken},
 						Channel: recActor3.Record(ctx),
 					},
@@ -91,6 +98,7 @@ func TestSession(t *testing.T) {
 					{
 						Token:   actor4Token,
 						Name:    "actor4@cli2",
+						Config:  actor4Config,
 						Story:   server.StoryInfo{Token: storyToken},
 						Channel: recActor4.Record(ctx),
 					},

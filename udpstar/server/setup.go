@@ -54,6 +54,7 @@ type Client struct {
 type Actor struct {
 	Token   message.Token
 	Name    string
+	Config  []byte
 	Story   StoryInfo
 	Channel chan<- []byte // channel to which the actor's actions are put
 }
@@ -158,6 +159,14 @@ func (s *Session) Validate() error {
 				return fmt.Errorf("remote actor tokens for client %d are not unique", i)
 			}
 			remoteActors[a.Token] = struct{}{}
+
+			if a.Name == "" {
+				return fmt.Errorf("remote actor name is missing for client %d", i)
+			}
+
+			if a.Config == nil {
+				return fmt.Errorf("remote actor config is missing for client %d", i)
+			}
 
 			if a.Channel == nil {
 				return fmt.Errorf("channel not provided for remote actor %d in client %d", j, i)

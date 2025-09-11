@@ -35,6 +35,8 @@ func TestUpgrade(t *testing.T) {
 	actor1Token := message.Token(7) // @ server 1
 	actor2Token := message.Token(8) // @ client 1
 
+	actor2Config := []byte{2, 3}
+
 	broadcastAddr := []byte{10, 0, 0, 1}
 
 	w := NewNetwork(t, broadcastAddr, l)
@@ -100,7 +102,7 @@ func TestUpgrade(t *testing.T) {
 	// *** join local=0 slot=0, join remote client=1 actor=2 slot=1
 
 	srv.JoinLocal(lobbyToken, actor1Token, 0, 0, actor1Name)
-	cli.Join(actor2Token, 1, actor2Name)
+	cli.Join(actor2Token, 1, actor2Name, actor2Config)
 
 	time.Sleep(pause)
 	w.Wait()
@@ -201,6 +203,10 @@ func TestUpgrade(t *testing.T) {
 
 	if want, got := actor2Name, srvSession.Clients[0].Actors[0].Name; want != got {
 		t.Errorf("server session client actor name doesn't match: want=%s got=%s", want, got)
+	}
+
+	if want, got := actor2Config, srvSession.Clients[0].Actors[0].Config; !bytes.Equal(want, got) {
+		t.Errorf("server session client actor name doesn't match: want=%v got=%v", want, got)
 	}
 
 	if want, got := storyToken, srvSession.Clients[0].Actors[0].Story.Token; want != got {

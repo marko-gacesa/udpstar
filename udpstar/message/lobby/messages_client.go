@@ -16,6 +16,7 @@ type Join struct {
 	ActorToken message.Token
 	Slot       byte
 	Name       string
+	Config     []byte
 }
 
 var _ ClientMessage = (*Join)(nil)
@@ -26,7 +27,8 @@ func (m *Join) Size() int {
 	return sizeClientBase +
 		message.SizeOfToken +
 		1 + // slot
-		1 + len(m.Name)
+		1 + len(m.Name) +
+		1 + len(m.Config)
 }
 
 func (m *Join) Put(buf []byte) int {
@@ -38,6 +40,7 @@ func (m *Join) Put(buf []byte) int {
 	s.PutToken(m.ActorToken)
 	s.Put8(m.Slot)
 	s.PutStr(m.Name)
+	s.PutBytes(m.Config)
 	return s.Len()
 }
 
@@ -50,6 +53,7 @@ func (m *Join) Get(buf []byte) int {
 	s.GetToken(&m.ActorToken)
 	s.Get8(&m.Slot)
 	s.GetStr(&m.Name)
+	s.GetBytes(&m.Config)
 	return s.Len()
 }
 

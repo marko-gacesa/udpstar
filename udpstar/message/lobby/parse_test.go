@@ -23,6 +23,7 @@ func TestParseClient(t *testing.T) {
 			ActorToken: message.RandomToken(),
 			Slot:       byte(r.Intn(8)),
 			Name:       "blah-blah",
+			Config:     []byte{2},
 		},
 		&Leave{
 			HeaderClient: HeaderClient{

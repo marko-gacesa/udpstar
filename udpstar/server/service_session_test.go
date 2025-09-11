@@ -39,6 +39,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 					{
 						Token:   tokenActor1,
 						Name:    "marko",
+						Config:  []byte{1},
 						Story:   StoryInfo{Token: tokenStory},
 						Channel: actor1Ch,
 					},
@@ -50,6 +51,7 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 					{
 						Token:   tokenActor2,
 						Name:    "ogi",
+						Config:  []byte{2},
 						Story:   StoryInfo{Token: tokenStory},
 						Channel: actor2Ch,
 					},

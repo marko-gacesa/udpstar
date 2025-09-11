@@ -28,7 +28,7 @@ var _ interface {
 	HandleIncomingMessages(data []byte)
 
 	// Join sends a join request message to the server.
-	Join(actorToken message.Token, slot byte, name string)
+	Join(actorToken message.Token, slot byte, name string, config []byte)
 	// Leave sends a leave request message to the server for a single actor.
 	Leave(actorToken message.Token)
 	// LeaveAll sends a leave-all message to the server. That's a leave request for each actor from this client.
@@ -292,8 +292,8 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 }
 
 // Join sends a join request message to the server.
-func (c *Lobby) Join(actorToken message.Token, slot byte, name string) {
-	c.sendCommand(lobbyJoinReq{ActorToken: actorToken, Slot: slot, Name: name})
+func (c *Lobby) Join(actorToken message.Token, slot byte, name string, config []byte) {
+	c.sendCommand(lobbyJoinReq{ActorToken: actorToken, Slot: slot, Name: name, Config: config})
 }
 
 // Leave sends a leave request message to the server for a single actor.
@@ -371,6 +371,7 @@ type lobbyJoinReq struct {
 	ActorToken message.Token
 	Slot       byte
 	Name       string
+	Config     []byte
 }
 
 func (r lobbyJoinReq) process(c *Lobby) {
@@ -381,6 +382,7 @@ func (r lobbyJoinReq) process(c *Lobby) {
 	msg.ActorToken = r.ActorToken
 	msg.Slot = r.Slot
 	msg.Name = r.Name
+	msg.Config = r.Config
 
 	select {
 	case <-c.doneCh:

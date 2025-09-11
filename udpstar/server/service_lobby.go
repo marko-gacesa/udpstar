@@ -123,12 +123,12 @@ func (s *lobbyService) Start(ctx context.Context) error {
 			}
 
 			// Update the version if there are remotes, because latency might change.
-			for i := range s.slots {
-				if s.slots[i].isRemote() {
-					s.version++
-					break
-				}
-			}
+			//for i := range s.slots {
+			//	if s.slots[i].isRemote() {
+			//		s.version++
+			//		break
+			//	}
+			//}
 
 		case command := <-s.commandCh:
 			changed := command.process(s)
@@ -308,7 +308,7 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 			}
 
 			s.incClient(msg.ClientToken, addr, latency)
-			s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name)
+			s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, msg.Config)
 			s.state = lobbymessage.StateActive
 
 			return true
@@ -335,7 +335,7 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 	}
 
 	s.incClient(msg.ClientToken, addr, latency)
-	s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name)
+	s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, msg.Config)
 	s.updateState()
 
 	return true
@@ -472,6 +472,7 @@ type LobbySlot struct {
 	ClientToken  message.Token
 	ActorToken   message.Token
 	Name         string
+	Config       []byte
 }
 
 func (d *LobbySlot) isRemote() bool { return d.Availability == lobbymessage.SlotRemote }
@@ -480,11 +481,12 @@ func (d *LobbySlot) isLocal() bool {
 }
 func (d *LobbySlot) isAvailable() bool { return d.Availability == lobbymessage.SlotAvailable }
 
-func (d *LobbySlot) remote(actor, client message.Token, name string) {
+func (d *LobbySlot) remote(actor, client message.Token, name string, config []byte) {
 	d.Availability = lobbymessage.SlotRemote
 	d.ClientToken = client
 	d.ActorToken = actor
 	d.Name = name
+	d.Config = config
 }
 
 func (d *LobbySlot) local(actor message.Token, idx byte, name string) {
@@ -492,6 +494,7 @@ func (d *LobbySlot) local(actor message.Token, idx byte, name string) {
 	d.ClientToken = 0
 	d.ActorToken = actor
 	d.Name = name
+	d.Config = nil
 }
 
 func (d *LobbySlot) clear() {
@@ -499,6 +502,7 @@ func (d *LobbySlot) clear() {
 	d.ClientToken = 0
 	d.ActorToken = 0
 	d.Name = ""
+	d.Config = nil
 }
 
 // lobbyToSession converts a lobby to session, but all channels are left unassigned (nil).
@@ -524,8 +528,9 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 		if slot.isLocal() {
 			session.LocalActors = append(session.LocalActors, LocalActor{
 				Actor: Actor{
-					Token: slot.ActorToken,
-					Name:  slot.Name,
+					Token:  slot.ActorToken,
+					Name:   slot.Name,
+					Config: slot.Config,
 					Story: StoryInfo{
 						Token: slot.StoryToken,
 					},
@@ -551,8 +556,9 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 			}
 
 			session.Clients[clientIdx].Actors = append(session.Clients[clientIdx].Actors, Actor{
-				Token: slot.ActorToken,
-				Name:  slot.Name,
+				Token:  slot.ActorToken,
+				Name:   slot.Name,
+				Config: slot.Config,
 				Story: StoryInfo{
 					Token: slot.StoryToken,
 				},

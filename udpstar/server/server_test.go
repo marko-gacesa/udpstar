@@ -73,6 +73,7 @@ func newSimpleSession(tokenSession, tokenStory, tokenClient, tokenActor message.
 					{
 						Token:   tokenActor,
 						Name:    "marko",
+						Config:  []byte{2},
 						Story:   StoryInfo{Token: tokenStory},
 						Channel: actorCh,
 					},

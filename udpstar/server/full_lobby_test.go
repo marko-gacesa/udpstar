@@ -38,6 +38,9 @@ func TestLobby(t *testing.T) {
 	actor3Token := message.Token(3) // @ client 2
 	actor4Token := message.Token(4) // @ server 2
 
+	actor2Config := []byte{2, 3}
+	actor3Config := []byte{3, 4}
+
 	broadcastAddr := []byte{10, 0, 0, 1}
 
 	w := NewNetwork(t, broadcastAddr, l)
@@ -110,7 +113,7 @@ func TestLobby(t *testing.T) {
 
 	// *** step "1": join local=0 slot=0, join remote client=1 actor=2 slot=1
 
-	cli1.Join(actor2Token, 1, actor2Name)
+	cli1.Join(actor2Token, 1, actor2Name, actor2Config)
 	srv.JoinLocal(lobbyToken, actor1Token, 0, 0, actor1Name)
 
 	time.Sleep(pause)
@@ -155,7 +158,7 @@ func TestLobby(t *testing.T) {
 	// *** step "2": join local=1 slot=3, join remote client=2 actor=3 slot=2
 
 	srv.JoinLocal(lobbyToken, actor4Token, 3, 1, actor4Name)
-	cli2.Join(actor3Token, 2, actor3Name)
+	cli2.Join(actor3Token, 2, actor3Name, actor3Config)
 
 	time.Sleep(pause)
 	w.Wait()
@@ -268,7 +271,7 @@ func TestLobby(t *testing.T) {
 
 	// *** step "5": rejoin remote client=1 actor=2 slot=1
 
-	cli1.Join(actor2Token, 1, actor2Name)
+	cli1.Join(actor2Token, 1, actor2Name, actor2Config)
 
 	time.Sleep(pause)
 	w.Wait()

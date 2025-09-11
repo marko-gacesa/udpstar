@@ -67,6 +67,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 					{
 						Token:   tokenActor1,
 						Name:    "marko",
+						Config:  []byte{1, 2, 3},
 						Story:   StoryInfo{Token: tokenStory},
 						Channel: actor1Rec.Record(ctx),
 					},
@@ -78,6 +79,7 @@ func TestClientService_HandleActionPack(t *testing.T) {
 					{
 						Token:   tokenActor2,
 						Name:    "ogi",
+						Config:  []byte{4, 5, 6},
 						Story:   StoryInfo{Token: tokenStory},
 						Channel: actor2Rec.Record(ctx),
 					},
