@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"math/bits"
 )
 
 type LobbySetup struct {
@@ -56,6 +57,7 @@ type Actor struct {
 	Name    string
 	Config  []byte
 	Story   StoryInfo
+	Index   byte
 	Channel chan<- []byte // channel to which the actor's actions are put
 }
 
@@ -131,7 +133,13 @@ func (s *Session) Validate() error {
 			return fmt.Errorf("local actor %d linked to unknown story", i)
 		}
 
-		storyActors[a.Story.Token]++
+		mask := 1 << a.Index
+
+		if storyActors[a.Story.Token]&mask != 0 {
+			return fmt.Errorf("local actor %d on occupied slot", i)
+		}
+
+		storyActors[a.Story.Token] |= mask
 	}
 
 	clientTokenMap := map[message.Token]struct{}{}
@@ -177,13 +185,24 @@ func (s *Session) Validate() error {
 				return fmt.Errorf("remote actor %d in client %d assigned to unknown story", j, i)
 			}
 
-			storyActors[a.Story.Token]++
+			mask := 1 << a.Index
+
+			if storyActors[a.Story.Token]&mask != 0 {
+				return fmt.Errorf("remote actor %d on occupied slot for client %d", j, i)
+			}
+
+			storyActors[a.Story.Token] |= mask
 		}
 	}
 
-	for storyToken, actorCount := range storyActors {
-		if actorCount == 0 {
+	for storyToken, actorBits := range storyActors {
+		if actorBits == 0 {
 			return fmt.Errorf("story %x has no assigned actors", storyToken)
+		}
+
+		count := bits.OnesCount(uint(actorBits))
+		if actorBits != 1<<count-1 {
+			return fmt.Errorf("story %x is missing some actors", storyToken)
 		}
 	}
 

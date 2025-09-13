@@ -27,9 +27,12 @@ func newActionService(
 	latency latencyGetter,
 	log *slog.Logger,
 ) actionService {
-	actorActions := make([]actorAction, len(actors))
+	actorActions := make([]actorAction, 0)
 	for i := range actors {
-		actorActions[i] = newActorAction(actors[i])
+		if actors[i].Token == 0 {
+			continue
+		}
+		actorActions = append(actorActions, newActorAction(actors[i]))
 	}
 
 	return actionService{

@@ -512,6 +512,7 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 	session.Token = token
 	session.Name = name
 	session.Def = def
+	var actorIdx byte = 0
 
 	var lastStoryToken message.Token
 	for _, slot := range slots {
@@ -523,6 +524,7 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 				},
 				Channel: nil,
 			})
+			actorIdx = 0
 		}
 
 		if slot.isLocal() {
@@ -534,6 +536,7 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 					Story: StoryInfo{
 						Token: slot.StoryToken,
 					},
+					Index:   actorIdx,
 					Channel: nil,
 				},
 				InputCh: nil,
@@ -562,9 +565,12 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 				Story: StoryInfo{
 					Token: slot.StoryToken,
 				},
+				Index:   actorIdx,
 				Channel: nil,
 			})
 		}
+
+		actorIdx++
 	}
 
 	return session

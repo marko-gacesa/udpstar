@@ -232,6 +232,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	session.Actors = make([]Actor, 0)
 
 	setStory := map[message.Token]struct{}{}
+	var actorIdx byte = 0
 	for i := range c.data.Slots {
 		storyToken := c.data.Slots[i].StoryToken
 		_, ok := setStory[storyToken]
@@ -241,15 +242,18 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 				Channel:   nil,
 			})
 			setStory[storyToken] = struct{}{}
+			actorIdx = 0
 		}
 
-		if actorToken := c.data.Slots[i].ActorToken; actorToken != 0 {
-			session.Actors = append(session.Actors, Actor{
-				Token:   actorToken,
-				Story:   StoryInfo{Token: storyToken},
-				InputCh: nil,
-			})
-		}
+		session.Actors = append(session.Actors, Actor{
+			Token:   c.data.Slots[i].ActorToken,
+			Story:   StoryInfo{Token: storyToken},
+			Name:    c.data.Slots[i].Name,
+			Index:   actorIdx,
+			InputCh: nil,
+		})
+
+		actorIdx++
 	}
 
 	return session

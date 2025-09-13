@@ -261,7 +261,14 @@ func TestUpgrade(t *testing.T) {
 			srvSession.Stories, cliSession.Stories)
 	}
 
-	if actorsMatch := slices.EqualFunc(srvSession.Clients[0].Actors, cliSession.Actors, func(sa server.Actor, ca client.Actor) bool {
+	cliActors := make([]client.Actor, 0)
+	for i := range cliSession.Actors {
+		if cliSession.Actors[i].Token != 0 {
+			cliActors = append(cliActors, cliSession.Actors[i])
+		}
+	}
+
+	if actorsMatch := slices.EqualFunc(srvSession.Clients[0].Actors, cliActors, func(sa server.Actor, ca client.Actor) bool {
 		return sa.Token == ca.Token && sa.Story.Token == ca.Story.Token
 	}); !actorsMatch {
 		t.Errorf("client session actors doesn't match server session actors: srv=%v cli=%v",
