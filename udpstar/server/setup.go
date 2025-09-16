@@ -208,3 +208,62 @@ func (s *Session) Validate() error {
 
 	return nil
 }
+
+type StoryActorInfo struct {
+	Token     message.Token
+	Name      string
+	Config    []byte
+	ClientIdx int // Index in the session.Clients array, or -1 if the actor is a local actor.
+	ActorIdx  int // Index in actors array. Local index, or the index in client's actors array.
+}
+
+func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error) {
+	actorMap := make(map[byte]StoryActorInfo)
+
+	for actorIdx := range s.LocalActors {
+		if s.LocalActors[actorIdx].Story.Token == storyToken {
+			actor := s.LocalActors[actorIdx]
+			idx := actor.Index
+			if _, ok := actorMap[idx]; ok {
+				return nil, fmt.Errorf("duplicate story actor index %d", idx)
+			}
+			actorMap[idx] = StoryActorInfo{
+				Token:     actor.Token,
+				Name:      actor.Name,
+				Config:    actor.Config,
+				ClientIdx: -1,
+				ActorIdx:  int(idx),
+			}
+		}
+	}
+
+	for clientIdx := range s.Clients {
+		for actorIdx := range s.Clients[clientIdx].Actors {
+			if s.Clients[clientIdx].Actors[actorIdx].Story.Token == storyToken {
+				actor := s.Clients[clientIdx].Actors[actorIdx]
+				idx := actor.Index
+				if _, ok := actorMap[idx]; ok {
+					return nil, fmt.Errorf("duplicate story actor index %d", idx)
+				}
+				actorMap[idx] = StoryActorInfo{
+					Token:     actor.Token,
+					Name:      actor.Name,
+					Config:    actor.Config,
+					ClientIdx: clientIdx,
+					ActorIdx:  int(idx),
+				}
+			}
+		}
+	}
+
+	count := byte(len(actorMap))
+	actors := make([]StoryActorInfo, count)
+	for idx, actor := range actorMap {
+		if idx < 0 || idx >= count {
+			return nil, fmt.Errorf("story actor index out of range: %d", idx)
+		}
+		actors[idx] = actor
+	}
+
+	return actors, nil
+}
