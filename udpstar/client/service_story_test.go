@@ -3,6 +3,7 @@
 package client
 
 import (
+	"bytes"
 	"context"
 	"github.com/marko-gacesa/udpstar/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
@@ -23,7 +24,7 @@ func TestStoryService_HandlePack(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	storyRec := channel.NewRecorder[sequence.Entry]()
+	storyRec := channel.NewRecorder[[]byte]()
 	stories := []Story{
 		{
 			StoryInfo: StoryInfo{Token: tokenStory},
@@ -89,10 +90,10 @@ func TestStoryService_HandlePack(t *testing.T) {
 
 	messages := msgRec.Recording()
 
-	compareStoryElements(t, []sequence.Entry{
-		storyEntry1,
-		storyEntry2,
-		storyEntry3,
+	compareStoryElements(t, [][]byte{
+		storyEntry1.Payload,
+		storyEntry2.Payload,
+		storyEntry3.Payload,
 	}, storyRec.Recording())
 
 	compareMessages(t, []storymessage.ClientMessage{
@@ -119,7 +120,7 @@ func TestStoryService_HandlePack(t *testing.T) {
 	}, messages)
 }
 
-func compareStoryElements(t *testing.T, wantEntries []sequence.Entry, gotEntries []sequence.Entry) {
+func compareStoryElements(t *testing.T, wantEntries [][]byte, gotEntries [][]byte) {
 	if want, got := len(wantEntries), len(gotEntries); want != got {
 		t.Errorf("entries count mismatch: want=%d got=%d", want, got)
 		size := min(len(wantEntries), len(gotEntries))
@@ -130,10 +131,7 @@ func compareStoryElements(t *testing.T, wantEntries []sequence.Entry, gotEntries
 	for i := range gotEntries {
 		wantEntry := wantEntries[i]
 		gotEntry := gotEntries[i]
-		if want, got := wantEntry.Seq, gotEntry.Seq; want != got {
-			t.Errorf("story entry %d seq mismatch: want=%d got=%d", i, want, got)
-		}
-		if want, got := wantEntry.Payload, gotEntry.Payload; !reflect.DeepEqual(want, got) {
+		if want, got := wantEntry, gotEntry; !bytes.Equal(want, got) {
 			t.Errorf("story entry %d payload mismatch: want=%v got=%v", i, want, got)
 		}
 	}

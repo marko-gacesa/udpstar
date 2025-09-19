@@ -220,11 +220,13 @@ func (s *sessionService) start(ctx context.Context) error {
 
 			actor := &s.localActors[actorActionData.ID]
 
-			action := actorActionData.Data
+			if actor.Channel != nil {
+				action := actorActionData.Data
 
-			select {
-			case <-s.doneCh:
-			case actor.Channel <- action:
+				select {
+				case <-s.doneCh:
+				case actor.Channel <- action:
+				}
 			}
 		}
 	}

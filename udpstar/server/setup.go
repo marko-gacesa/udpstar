@@ -63,7 +63,9 @@ type Actor struct {
 
 type LocalActor struct {
 	Actor
-	InputCh <-chan []byte // channel from which the local actor's actions are read
+
+	// InputCh is the channel from which the local actor's actions are read. Optional.
+	InputCh <-chan []byte
 }
 
 type StoryInfo struct {
@@ -120,13 +122,13 @@ func (s *Session) Validate() error {
 		}
 		localActors[a.Token] = struct{}{}
 
-		if a.Channel == nil {
-			return fmt.Errorf("channel not provided for local actor %d", i)
-		}
+		//if a.Channel == nil {
+		//	return fmt.Errorf("channel not provided for local actor %d", i)
+		//}
 
-		if a.InputCh == nil {
-			return fmt.Errorf("input channel not provided for local actor %d", i)
-		}
+		//if a.InputCh == nil {
+		//	return fmt.Errorf("input channel not provided for local actor %d", i)
+		//}
 
 		_, ok = storyActors[a.Story.Token]
 		if !ok {
@@ -213,8 +215,8 @@ type StoryActorInfo struct {
 	Token     message.Token
 	Name      string
 	Config    []byte
-	ClientIdx int // Index in the session.Clients array, or -1 if the actor is a local actor.
-	ActorIdx  int // Index in actors array. Local index, or the index in client's actors array.
+	ClientIdx int  // ClientIdx is the index in the session.Clients array, or -1 if the actor is a local actor.
+	ActorIdx  byte // ActorIdx is index of the actor. Local index, or the index in client's actors array.
 }
 
 func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error) {
@@ -232,7 +234,7 @@ func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error
 				Name:      actor.Name,
 				Config:    actor.Config,
 				ClientIdx: -1,
-				ActorIdx:  int(idx),
+				ActorIdx:  idx,
 			}
 		}
 	}
@@ -250,7 +252,7 @@ func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error
 					Name:      actor.Name,
 					Config:    actor.Config,
 					ClientIdx: clientIdx,
-					ActorIdx:  int(idx),
+					ActorIdx:  idx,
 				}
 			}
 		}

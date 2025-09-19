@@ -86,7 +86,7 @@ func (s *storyService) Start(ctx context.Context) {
 
 			for i := range events {
 				select {
-				case story.story.Channel <- events[i]:
+				case story.story.Channel <- events[i].Payload:
 				case <-ctx.Done():
 					return
 				}

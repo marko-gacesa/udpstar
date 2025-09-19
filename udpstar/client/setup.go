@@ -5,7 +5,6 @@ package client
 import (
 	"errors"
 	"fmt"
-	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"math/bits"
 )
@@ -20,11 +19,13 @@ type Session struct {
 }
 
 type Actor struct {
-	Token   message.Token
-	Story   StoryInfo
-	Name    string
-	Index   byte
-	InputCh <-chan []byte // channel from which the local actor's actions are read
+	Token message.Token
+	Story StoryInfo
+	Name  string
+	Index byte
+
+	// InputCh is channel from which the local actor's actions are read. Required.
+	InputCh <-chan []byte
 }
 
 type StoryInfo struct {
@@ -33,7 +34,9 @@ type StoryInfo struct {
 
 type Story struct {
 	StoryInfo
-	Channel chan<- sequence.Entry // channel to which story elements are placed for processing
+
+	// Channel to which story elements are placed. Required.
+	Channel chan<- []byte
 }
 
 func (s *Session) Validate() error {
@@ -111,4 +114,40 @@ func (s *Session) Validate() error {
 	}
 
 	return nil
+}
+
+type StoryActorInfo struct {
+	Token    message.Token
+	Name     string
+	ActorIdx byte
+}
+
+func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error) {
+	actorMap := make(map[byte]StoryActorInfo)
+
+	for actorIdx := range s.Actors {
+		if s.Actors[actorIdx].Story.Token == storyToken {
+			actor := s.Actors[actorIdx]
+			idx := actor.Index
+			if _, ok := actorMap[idx]; ok {
+				return nil, fmt.Errorf("duplicate story actor index %d", idx)
+			}
+			actorMap[idx] = StoryActorInfo{
+				Token:    actor.Token,
+				Name:     actor.Name,
+				ActorIdx: idx,
+			}
+		}
+	}
+
+	count := byte(len(actorMap))
+	actors := make([]StoryActorInfo, count)
+	for idx, actor := range actorMap {
+		if idx < 0 || idx >= count {
+			return nil, fmt.Errorf("story actor index out of range: %d", idx)
+		}
+		actors[idx] = actor
+	}
+
+	return actors, nil
 }

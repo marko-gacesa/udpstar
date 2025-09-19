@@ -5,7 +5,6 @@ package server_test
 import (
 	"context"
 	"github.com/marko-gacesa/udpstar/channel"
-	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/client"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"github.com/marko-gacesa/udpstar/udpstar/server"
@@ -50,8 +49,8 @@ func TestSession(t *testing.T) {
 	recActor2 := channel.NewRecorder[[]byte]()
 	recActor3 := channel.NewRecorder[[]byte]()
 	recActor4 := channel.NewRecorder[[]byte]()
-	recStoryCli1 := channel.NewRecorder[sequence.Entry]()
-	recStoryCli2 := channel.NewRecorder[sequence.Entry]()
+	recStoryCli1 := channel.NewRecorder[[]byte]()
+	recStoryCli2 := channel.NewRecorder[[]byte]()
 
 	const sessionName = "session-test"
 	def := []byte{7, 2, 5}
@@ -293,20 +292,13 @@ func TestSession(t *testing.T) {
 	t.Log(recordingStoryCli1)
 	t.Log(recordingStoryCli2)
 
-	for i := range recordingStoryCli1 {
-		recordingStoryCli1[i].Delay = 0
-	}
-	for i := range recordingStoryCli2 {
-		recordingStoryCli2[i].Delay = 0
-	}
-
-	want := []sequence.Entry{
-		{Seq: 1, Payload: []byte{98}},
-		{Seq: 2, Payload: []byte{99}},
-		{Seq: 3, Payload: []byte{100}},
-		{Seq: 4, Payload: []byte{101}},
-		{Seq: 5, Payload: []byte{102}},
-		{Seq: 6, Payload: []byte{103}},
+	want := [][]byte{
+		{98},
+		{99},
+		{100},
+		{101},
+		{102},
+		{103},
 	}
 
 	if !reflect.DeepEqual(want, recordingStoryCli1) {
