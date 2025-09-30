@@ -342,7 +342,10 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 func (s *lobbyService) remoteLeave(msg *lobbymessage.Leave, addr net.UDPAddr) bool {
 	var changed bool
 	for i := 0; i < len(s.slots); i++ {
-		if msg.ActorToken == s.slots[i].ActorToken {
+		if msg.ClientToken != s.slots[i].ClientToken {
+			continue
+		}
+		if msg.ActorToken == 0 || msg.ActorToken == s.slots[i].ActorToken {
 			s.decClient(s.slots[i].ClientToken, addr, msg.GetLatency())
 			s.slots[i].clear()
 			s.state = lobbymessage.StateActive
