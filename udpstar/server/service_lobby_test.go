@@ -710,6 +710,21 @@ func TestLobbyService(t *testing.T) {
 					},
 				},
 				{
+					addr: client2Addr,
+					msg: lobbymessage.Setup{
+						HeaderServer: lobbymessage.HeaderServer{LobbyToken: lobbyToken},
+						Name:         lobbyName,
+						Def:          def,
+						Slots: []lobbymessage.Slot{
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
+							{StoryToken: story1, ActorToken: 0, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: udpstar.SlotLocal2, Name: actor3Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: udpstar.SlotRemote, Name: actor4Name, Latency: 10 * time.Microsecond},
+						},
+						State: lobbymessage.StateReady,
+					},
+				},
+				{
 					addr: client1Addr,
 					msg: lobbymessage.Setup{
 						HeaderServer: lobbymessage.HeaderServer{LobbyToken: lobbyToken},

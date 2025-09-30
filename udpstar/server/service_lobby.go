@@ -83,7 +83,7 @@ func (s *lobbyService) Start(ctx context.Context) error {
 		case <-ctx.Done():
 			return ctx.Err()
 
-		case <-broadcastTimer.C:
+		case now := <-broadcastTimer.C:
 			msg := s.getSetupMessage()
 
 			// Broadcast the message if there are still available slots.
@@ -100,16 +100,22 @@ func (s *lobbyService) Start(ctx context.Context) error {
 
 			// Send message to every client directly, but only with relevant actor tokens filled.
 			for clientToken, cliInfo := range s.clients {
-				if cliInfo.Count == 0 {
-					delete(s.clients, clientToken)
-					continue
-				}
+				if cliInfo.Count <= 0 {
+					if now.Sub(cliInfo.LastMsgReceived) > time.Minute {
+						delete(s.clients, clientToken)
+						continue
+					}
 
-				for i := range s.slots {
-					if s.slots[i].isRemote() && s.slots[i].ClientToken == clientToken {
-						msg.Slots[i].ActorToken = s.slots[i].ActorToken
-					} else {
+					for i := range s.slots {
 						msg.Slots[i].ActorToken = 0
+					}
+				} else {
+					for i := range s.slots {
+						if s.slots[i].isRemote() && s.slots[i].ClientToken == clientToken {
+							msg.Slots[i].ActorToken = s.slots[i].ActorToken
+						} else {
+							msg.Slots[i].ActorToken = 0
+						}
 					}
 				}
 
@@ -121,14 +127,6 @@ func (s *lobbyService) Start(ctx context.Context) error {
 						"err", err.Error())
 				}
 			}
-
-			// Update the version if there are remotes, because latency might change.
-			//for i := range s.slots {
-			//	if s.slots[i].isRemote() {
-			//		s.version++
-			//		break
-			//	}
-			//}
 
 		case command := <-s.commandCh:
 			changed := command.process(s)
@@ -423,46 +421,41 @@ type clientInfo struct {
 	ClientData
 }
 
-func (s *lobbyService) incClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
-	info := s.clients[clientToken]
-	info.Count++
+func (s *lobbyService) _touchClient(info *clientInfo, addr net.UDPAddr, latency time.Duration) {
 	info.ClientData.LastMsgReceived = time.Now()
 	info.ClientData.Address = addr
 	info.ClientData.Latency = latency
+}
+
+func (s *lobbyService) touchClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
+	info := s.clients[clientToken]
+	s._touchClient(&info, addr, latency)
+	s.clients[clientToken] = info
+}
+
+func (s *lobbyService) incClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
+	info := s.clients[clientToken]
+	info.Count++
+	s._touchClient(&info, addr, latency)
 	s.clients[clientToken] = info
 }
 
 func (s *lobbyService) decClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
 	info := s.clients[clientToken]
 	info.Count--
-	info.ClientData.LastMsgReceived = time.Now()
-	info.ClientData.Address = addr
-	info.ClientData.Latency = latency
-	if info.Count <= 0 {
-		delete(s.clients, clientToken)
-		return
-	}
+	s._touchClient(&info, addr, latency)
 	s.clients[clientToken] = info
 }
 
 func (s *lobbyService) decClientNoAddr(clientToken message.Token) {
 	info := s.clients[clientToken]
 	info.Count--
-	if info.Count <= 0 {
-		delete(s.clients, clientToken)
-		return
-	}
 	s.clients[clientToken] = info
 }
 
 func (s *lobbyService) updateClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
-	info, ok := s.clients[clientToken]
-	if !ok {
-		return
-	}
-	info.ClientData.LastMsgReceived = time.Now()
-	info.ClientData.Address = addr
-	info.ClientData.Latency = latency
+	info := s.clients[clientToken]
+	s._touchClient(&info, addr, latency)
 	s.clients[clientToken] = info
 }
 
