@@ -137,9 +137,6 @@ func (s *Server) HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte {
 	var responseBuffer []byte
 
 	if msgPing, ok := pingmessage.ParsePing(data); ok {
-		s.log.Debug("server received ping",
-			"addr", addr,
-			"messageID", msgPing.MessageID)
 		responseBuffer = s.handlePingMessage(&msgPing)
 	} else if msgStory := storymessage.ParseClient(data); msgStory != nil {
 		responseBuffer = s.handleStoryMessage(msgStory, addr)

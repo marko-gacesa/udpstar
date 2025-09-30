@@ -130,10 +130,6 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 		for ping := range c.pingCh {
 			size := ping.Put(buffer[:])
 
-			c.log.Debug("send ping",
-				"messageID", ping.MessageID,
-				"size", size)
-
 			err := c.sender.Send(buffer[:size])
 			if err != nil {
 				c.log.Error("failed to send ping message to server",
@@ -269,8 +265,6 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 	}
 
 	if msgPong, ok := pingmessage.ParsePong(data); ok {
-		c.log.Debug("received pong",
-			"messageID", msgPong.MessageID)
 		c.pingSrv.HandlePong(msgPong)
 		return
 	}
