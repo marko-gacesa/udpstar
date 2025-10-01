@@ -320,6 +320,66 @@ func TestLobbyService(t *testing.T) {
 			},
 		},
 		{
+			name: "remote-rejoin",
+			mutate: func(srv *lobbyService) error {
+				srv.JoinLocal(actor1, 0, 0, actor1Name)
+				srv.JoinLocal(actor2, 1, 1, actor2Name)
+				srv.JoinLocal(actor3, 2, 2, actor3Name)
+				srv.HandleClient(&lobbymessage.Join{
+					HeaderClient: lobbymessage.HeaderClient{
+						LobbyToken:  lobbyToken,
+						ClientToken: client1,
+						Latency:     10,
+					},
+					ActorToken: actor4,
+					Slot:       3,
+					Name:       actor4Name,
+					Config:     actor4Config,
+				}, net.UDPAddr{IP: client1Addr, Port: port})
+				srv.HandleClient(&lobbymessage.Join{
+					HeaderClient: lobbymessage.HeaderClient{
+						LobbyToken:  lobbyToken,
+						ClientToken: client1,
+						Latency:     10,
+					},
+					ActorToken: actor4,
+					Slot:       3,
+					Name:       actor4Name,
+					Config:     actor4Config,
+				}, net.UDPAddr{IP: client1Addr, Port: port})
+				return nil
+			},
+			expected: udpstar.Lobby{
+				Version: 5,
+				Name:    lobbyName,
+				Def:     def,
+				Slots: []udpstar.LobbySlot{
+					{StoryToken: story1, ActorToken: actor1, Availability: udpstar.SlotLocal0, Name: actor1Name, Latency: 0},
+					{StoryToken: story1, ActorToken: actor2, Availability: udpstar.SlotLocal1, Name: actor2Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor3, Availability: udpstar.SlotLocal2, Name: actor3Name, Latency: 0},
+					{StoryToken: story2, ActorToken: actor4, Availability: udpstar.SlotRemote, Name: actor4Name, Latency: 10 * time.Microsecond},
+				},
+				State: udpstar.LobbyStateReady,
+			},
+			messages: []serverLobbyMessage{
+				{
+					addr: client1Addr,
+					msg: lobbymessage.Setup{
+						HeaderServer: lobbymessage.HeaderServer{LobbyToken: lobbyToken},
+						Name:         lobbyName,
+						Def:          def,
+						Slots: []lobbymessage.Slot{
+							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotLocal0, Name: actor1Name, Latency: 0},
+							{StoryToken: story1, ActorToken: 0, Availability: lobbymessage.SlotLocal1, Name: actor2Name, Latency: 0},
+							{StoryToken: story2, ActorToken: 0, Availability: lobbymessage.SlotLocal2, Name: actor3Name, Latency: 0},
+							{StoryToken: story2, ActorToken: actor4, Availability: lobbymessage.SlotRemote, Name: actor4Name, Latency: 10 * time.Microsecond},
+						},
+						State: lobbymessage.StateReady,
+					},
+				},
+			},
+		},
+		{
 			name: "remote-leave",
 			mutate: func(srv *lobbyService) error {
 				// remote join 1, from client 1
@@ -667,7 +727,7 @@ func TestLobbyService(t *testing.T) {
 				return nil
 			},
 			expected: udpstar.Lobby{
-				Version: 4,
+				Version: 6,
 				Name:    lobbyName,
 				Def:     def,
 				Slots: []udpstar.LobbySlot{

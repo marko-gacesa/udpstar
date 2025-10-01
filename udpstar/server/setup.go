@@ -212,11 +212,14 @@ func (s *Session) Validate() error {
 }
 
 type StoryActorInfo struct {
-	Token     message.Token
-	Name      string
-	Config    []byte
-	ClientIdx int  // ClientIdx is the index in the session.Clients array, or -1 if the actor is a local actor.
-	ActorIdx  byte // ActorIdx is index of the actor. Local index, or the index in client's actors array.
+	Token          message.Token
+	Name           string
+	Config         []byte
+	FieldActorIdx  byte
+	IsLocal        bool
+	LocalActorIdx  byte
+	ClientIdx      byte
+	ClientActorIdx byte
 }
 
 func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error) {
@@ -230,11 +233,12 @@ func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error
 				return nil, fmt.Errorf("duplicate story actor index %d", idx)
 			}
 			actorMap[idx] = StoryActorInfo{
-				Token:     actor.Token,
-				Name:      actor.Name,
-				Config:    actor.Config,
-				ClientIdx: -1,
-				ActorIdx:  idx,
+				Token:         actor.Token,
+				Name:          actor.Name,
+				Config:        actor.Config,
+				FieldActorIdx: idx,
+				IsLocal:       true,
+				LocalActorIdx: byte(actorIdx),
 			}
 		}
 	}
@@ -248,11 +252,13 @@ func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error
 					return nil, fmt.Errorf("duplicate story actor index %d", idx)
 				}
 				actorMap[idx] = StoryActorInfo{
-					Token:     actor.Token,
-					Name:      actor.Name,
-					Config:    actor.Config,
-					ClientIdx: clientIdx,
-					ActorIdx:  idx,
+					Token:          actor.Token,
+					Name:           actor.Name,
+					Config:         actor.Config,
+					FieldActorIdx:  idx,
+					IsLocal:        false,
+					ClientIdx:      byte(clientIdx),
+					ClientActorIdx: byte(actorIdx),
 				}
 			}
 		}

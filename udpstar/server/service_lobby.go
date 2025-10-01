@@ -254,7 +254,7 @@ func (s *lobbyService) localJoin(actorToken message.Token, slotIdx, localIdx byt
 
 	if !s.slots[slotIdx].isAvailable() {
 		if s.slots[slotIdx].ActorToken == actorToken {
-			// the slot is not available, but is claimed by the actor
+			// the slot is not available, but it's claimed by the same actor
 			s.slots[slotIdx].local(actorToken, localIdx, name)
 			return true
 		}
@@ -303,11 +303,12 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 			if clientToken := s.slots[slotIdx].ClientToken; clientToken != msg.ClientToken {
 				// actor somehow changed the client token
 				s.evictClient(clientToken)
+				s.incClient(msg.ClientToken, addr, latency)
+			} else {
+				s.touchClient(msg.ClientToken, addr, latency)
 			}
 
-			s.incClient(msg.ClientToken, addr, latency)
 			s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, msg.Config)
-			s.state = lobbymessage.StateActive
 
 			return true
 		}
@@ -340,20 +341,33 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 }
 
 func (s *lobbyService) remoteLeave(msg *lobbymessage.Leave, addr net.UDPAddr) bool {
-	var changed bool
-	for i := 0; i < len(s.slots); i++ {
-		if msg.ClientToken != s.slots[i].ClientToken {
-			continue
+	if msg.ActorToken == 0 {
+		removed := 0
+		for i := 0; i < len(s.slots); i++ {
+			if msg.ClientToken == s.slots[i].ClientToken {
+				removed++
+				s.slots[i].clear()
+			}
 		}
-		if msg.ActorToken == 0 || msg.ActorToken == s.slots[i].ActorToken {
+		if removed == 0 {
+			return false
+		}
+
+		s.zeroClient(msg.ClientToken, addr, msg.GetLatency())
+		s.state = lobbymessage.StateActive
+		return true
+	}
+
+	for i := 0; i < len(s.slots); i++ {
+		if msg.ActorToken == s.slots[i].ActorToken && msg.ClientToken == s.slots[i].ClientToken {
 			s.decClient(s.slots[i].ClientToken, addr, msg.GetLatency())
 			s.slots[i].clear()
 			s.state = lobbymessage.StateActive
-			changed = true
+			return true
 		}
 	}
 
-	return changed
+	return false
 }
 
 func (s *lobbyService) evictClient(clientToken message.Token) bool {
@@ -453,6 +467,13 @@ func (s *lobbyService) decClient(clientToken message.Token, addr net.UDPAddr, la
 func (s *lobbyService) decClientNoAddr(clientToken message.Token) {
 	info := s.clients[clientToken]
 	info.Count--
+	s.clients[clientToken] = info
+}
+
+func (s *lobbyService) zeroClient(clientToken message.Token, addr net.UDPAddr, latency time.Duration) {
+	info := s.clients[clientToken]
+	info.Count = 0
+	s._touchClient(&info, addr, latency)
 	s.clients[clientToken] = info
 }
 
@@ -675,7 +696,7 @@ type lobbyRemoteRequest struct {
 
 func (req lobbyRemoteRequest) process(s *lobbyService) bool {
 	s.remoteRequest(req.msg, req.addr)
-	return false
+	return true // because we updated latency
 }
 
 type lobbyChangeName struct {
