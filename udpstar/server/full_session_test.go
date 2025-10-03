@@ -40,12 +40,10 @@ func TestSession(t *testing.T) {
 	actor4Config := []byte{4}
 
 	storyChannel := make(chan []byte)
-	actor1InputChannel := make(chan []byte)
 	actor2InputChannel := make(chan []byte)
 	actor3InputChannel := make(chan []byte)
 	actor4InputChannel := make(chan []byte)
 
-	recActor1 := channel.NewRecorder[[]byte]()
 	recActor2 := channel.NewRecorder[[]byte]()
 	recActor3 := channel.NewRecorder[[]byte]()
 	recActor4 := channel.NewRecorder[[]byte]()
@@ -59,50 +57,52 @@ func TestSession(t *testing.T) {
 		Token: sessionToken,
 		Name:  sessionName,
 		Def:   def,
-		LocalActors: []server.LocalActor{
+		LocalActors: []server.Actor{
 			{
-				Actor: server.Actor{
-					Token:   actor1Token,
-					Name:    "actor1-local",
-					Config:  nil,
-					Story:   server.StoryInfo{Token: storyToken},
-					Index:   0,
-					Channel: recActor1.Record(ctx),
-				},
-				InputCh: actor1InputChannel,
+				Token:  actor1Token,
+				Name:   "actor1-local",
+				Config: nil,
+				Story:  server.StoryInfo{Token: storyToken},
+				Index:  0,
 			},
 		},
 		Clients: []server.Client{
 			{
 				Token: client1Token,
-				Actors: []server.Actor{
+				Actors: []server.ClientActor{
 					{
-						Token:   actor2Token,
-						Name:    "actor2@cli1",
-						Config:  actor2Config,
-						Story:   server.StoryInfo{Token: storyToken},
-						Index:   1,
+						Actor: server.Actor{
+							Token:  actor2Token,
+							Name:   "actor2@cli1",
+							Config: actor2Config,
+							Story:  server.StoryInfo{Token: storyToken},
+							Index:  1,
+						},
 						Channel: recActor2.Record(ctx),
 					},
 					{
-						Token:   actor3Token,
-						Name:    "actor3@cli1",
-						Config:  actor3Config,
-						Story:   server.StoryInfo{Token: storyToken},
-						Index:   2,
+						Actor: server.Actor{
+							Token:  actor3Token,
+							Name:   "actor3@cli1",
+							Config: actor3Config,
+							Story:  server.StoryInfo{Token: storyToken},
+							Index:  2,
+						},
 						Channel: recActor3.Record(ctx),
 					},
 				},
 			},
 			{
 				Token: client2Token,
-				Actors: []server.Actor{
+				Actors: []server.ClientActor{
 					{
-						Token:   actor4Token,
-						Name:    "actor4@cli2",
-						Config:  actor4Config,
-						Story:   server.StoryInfo{Token: storyToken},
-						Index:   3,
+						Actor: server.Actor{
+							Token:  actor4Token,
+							Name:   "actor4@cli2",
+							Config: actor4Config,
+							Story:  server.StoryInfo{Token: storyToken},
+							Index:  3,
+						},
 						Channel: recActor4.Record(ctx),
 					},
 				},
@@ -253,7 +253,6 @@ func TestSession(t *testing.T) {
 
 	time.Sleep(pause)
 
-	actor1InputChannel <- []byte{72}
 	storyChannel <- []byte{101}
 
 	time.Sleep(pause)
@@ -273,9 +272,6 @@ func TestSession(t *testing.T) {
 	cancel()
 	wgNodes.Wait()
 
-	if want, got := [][]byte{{72}}, recActor1.Recording(); !reflect.DeepEqual(want, got) {
-		t.Errorf("actor1 recording mismatch: want=%v got=%v", want, got)
-	}
 	if want, got := [][]byte{{68}, {68}}, recActor2.Recording(); !reflect.DeepEqual(want, got) {
 		t.Errorf("actor2 recording mismatch: want=%v got=%v", want, got)
 	}

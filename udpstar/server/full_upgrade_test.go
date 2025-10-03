@@ -171,15 +171,15 @@ func TestUpgrade(t *testing.T) {
 		return
 	}
 
-	if want, got := actor1Token, srvSession.LocalActors[0].Actor.Token; want != got {
+	if want, got := actor1Token, srvSession.LocalActors[0].Token; want != got {
 		t.Errorf("server session local actor token doesn't match: want=%d got=%d", want, got)
 	}
 
-	if want, got := actor1Name, srvSession.LocalActors[0].Actor.Name; want != got {
+	if want, got := actor1Name, srvSession.LocalActors[0].Name; want != got {
 		t.Errorf("server session local actor name doesn't match: want=%s got=%s", want, got)
 	}
 
-	if want, got := storyToken, srvSession.LocalActors[0].Actor.Story.Token; want != got {
+	if want, got := storyToken, srvSession.LocalActors[0].Story.Token; want != got {
 		t.Errorf("server session local actor story token doesn't match: want=%d got=%d", want, got)
 	}
 
@@ -268,7 +268,7 @@ func TestUpgrade(t *testing.T) {
 		}
 	}
 
-	if actorsMatch := slices.EqualFunc(srvSession.Clients[0].Actors, cliActors, func(sa server.Actor, ca client.Actor) bool {
+	if actorsMatch := slices.EqualFunc(srvSession.Clients[0].Actors, cliActors, func(sa server.ClientActor, ca client.Actor) bool {
 		return sa.Token == ca.Token && sa.Story.Token == ca.Story.Token
 	}); !actorsMatch {
 		t.Errorf("client session actors doesn't match server session actors: srv=%v cli=%v",

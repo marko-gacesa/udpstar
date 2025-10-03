@@ -88,9 +88,23 @@ func (s *actionService) Start(ctx context.Context) {
 			actor := &s.actorActions[timeData.ID]
 
 			actionCount := s.sendActions(actor)
-			if actionCount > 0 {
-				actor.resetResendTimer(pushbackDelay + s.latency.Latency())
+			if actionCount == 0 {
+				continue
 			}
+
+			var delay time.Duration
+
+			if actor.unansweredCount < 2 {
+				delay = pushbackDelay + s.latency.Latency()
+			} else if actor.unansweredCount < 8 {
+				delay = time.Duration(actor.unansweredCount) * 100 * time.Millisecond
+			} else {
+				continue
+			}
+
+			actor.unansweredCount++
+
+			actor.resetResendTimer(delay)
 
 		case msg := <-s.confirmCh:
 			var actor *actorAction
@@ -105,6 +119,8 @@ func (s *actionService) Start(ctx context.Context) {
 				s.log.Warn("received action confirm message for wrong actor")
 				continue
 			}
+
+			actor.unansweredCount = 0
 
 			actor.actions.RemoveFn(func(seq sequence.Sequence) bool {
 				return seq <= msg.LastSequence
@@ -159,17 +175,19 @@ func (s *actionService) stop() {
 
 type actorAction struct {
 	Actor
-	enum    sequence.Enumerator
-	actions *sequence.Recent
-	resend  *time.Timer
+	enum            sequence.Enumerator
+	actions         *sequence.Recent
+	resend          *time.Timer
+	unansweredCount uint8
 }
 
 func newActorAction(actor Actor) actorAction {
 	a := actorAction{
-		Actor:   actor,
-		enum:    sequence.Enumerator{},
-		actions: sequence.NewRecent(controller.ActionBufferCapacity),
-		resend:  time.NewTimer(time.Hour),
+		Actor:           actor,
+		enum:            sequence.Enumerator{},
+		actions:         sequence.NewRecent(controller.ActionBufferCapacity),
+		resend:          time.NewTimer(time.Hour),
+		unansweredCount: 0,
 	}
 
 	a.actions.SetRecentTotalByteSizeLimit(384)

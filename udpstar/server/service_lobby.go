@@ -545,18 +545,14 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 		}
 
 		if slot.isLocal() {
-			session.LocalActors = append(session.LocalActors, LocalActor{
-				Actor: Actor{
-					Token:  slot.ActorToken,
-					Name:   slot.Name,
-					Config: slot.Config,
-					Story: StoryInfo{
-						Token: slot.StoryToken,
-					},
-					Index:   actorIdx,
-					Channel: nil,
+			session.LocalActors = append(session.LocalActors, Actor{
+				Token:  slot.ActorToken,
+				Name:   slot.Name,
+				Config: slot.Config,
+				Story: StoryInfo{
+					Token: slot.StoryToken,
 				},
-				InputCh: nil,
+				Index: actorIdx,
 			})
 		} else if slot.isRemote() {
 			clientIdx := -1
@@ -575,14 +571,16 @@ func lobbyToSession(token message.Token, name string, def []byte, slots []LobbyS
 				})
 			}
 
-			session.Clients[clientIdx].Actors = append(session.Clients[clientIdx].Actors, Actor{
-				Token:  slot.ActorToken,
-				Name:   slot.Name,
-				Config: slot.Config,
-				Story: StoryInfo{
-					Token: slot.StoryToken,
+			session.Clients[clientIdx].Actors = append(session.Clients[clientIdx].Actors, ClientActor{
+				Actor: Actor{
+					Token:  slot.ActorToken,
+					Name:   slot.Name,
+					Config: slot.Config,
+					Story: StoryInfo{
+						Token: slot.StoryToken,
+					},
+					Index: actorIdx,
 				},
-				Index:   actorIdx,
 				Channel: nil,
 			})
 		}

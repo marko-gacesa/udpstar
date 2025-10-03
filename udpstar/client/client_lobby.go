@@ -52,6 +52,7 @@ type Lobby struct {
 	sendCh    chan lobbymessage.ClientMessage
 	pingCh    chan pingmessage.Ping
 	commandCh chan lobbyCommandProcessor
+	commandWg sync.WaitGroup
 	doneCh    chan struct{}
 
 	requestTimer *time.Timer
@@ -123,6 +124,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 			finished.Store(true)
 		case <-ctx.Done():
 		}
+		c.commandWg.Wait()
 	}()
 
 	go func() {
@@ -177,6 +179,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 				return
 			case command := <-c.commandCh:
 				command.process(c)
+				c.commandWg.Done()
 			}
 		}
 	}()
@@ -354,9 +357,11 @@ func (c *Lobby) updateData(msg *lobbymessage.Setup) {
 }
 
 func (c *Lobby) sendCommand(cmd lobbyCommandProcessor) {
+	c.commandWg.Add(1)
+
 	select {
 	case <-c.doneCh:
-		return
+		c.commandWg.Done()
 	case c.commandCh <- cmd:
 	}
 }

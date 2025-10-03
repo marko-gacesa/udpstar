@@ -63,26 +63,30 @@ func TestClientService_HandleActionPack(t *testing.T) {
 		Clients: []Client{
 			{
 				Token: tokenClient1,
-				Actors: []Actor{
+				Actors: []ClientActor{
 					{
-						Token:   tokenActor1,
-						Name:    "marko",
-						Config:  []byte{1, 2, 3},
-						Story:   StoryInfo{Token: tokenStory},
-						Index:   0,
+						Actor: Actor{
+							Token:  tokenActor1,
+							Name:   "marko",
+							Config: []byte{1, 2, 3},
+							Story:  StoryInfo{Token: tokenStory},
+							Index:  0,
+						},
 						Channel: actor1Rec.Record(ctx),
 					},
 				},
 			},
 			{
 				Token: tokenClient2,
-				Actors: []Actor{
+				Actors: []ClientActor{
 					{
-						Token:   tokenActor2,
-						Name:    "ogi",
-						Config:  []byte{4, 5, 6},
-						Story:   StoryInfo{Token: tokenStory},
-						Index:   1,
+						Actor: Actor{
+							Token:  tokenActor2,
+							Name:   "ogi",
+							Config: []byte{4, 5, 6},
+							Story:  StoryInfo{Token: tokenStory},
+							Index:  1,
+						},
 						Channel: actor2Rec.Record(ctx),
 					},
 				},

@@ -9,27 +9,27 @@ import (
 )
 
 type localActorData struct {
-	LocalActor
+	Actor
 	Enum sequence.Enumerator
 }
 
-func newLocalActorData(actorSetup LocalActor) localActorData {
+func newLocalActorData(actorSetup Actor) localActorData {
 	return localActorData{
-		LocalActor: actorSetup,
-		Enum:       sequence.Enumerator{},
+		Actor: actorSetup,
+		Enum:  sequence.Enumerator{},
 	}
 }
 
 type remoteActorData struct {
-	Actor
+	ClientActor
 	ActionStream  *sequence.Stream
 	ActionMissing sequence.RangeSet
 	mx            sync.Mutex
 }
 
-func newRemoteActorData(actorSetup Actor) remoteActorData {
+func newRemoteActorData(actorSetup ClientActor) remoteActorData {
 	return remoteActorData{
-		Actor:         actorSetup,
+		ClientActor:   actorSetup,
 		ActionStream:  sequence.NewStream(sequence.WithMaxWait(controller.ActionExpireDuration)),
 		ActionMissing: sequence.RangeSet{},
 	}

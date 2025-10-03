@@ -42,30 +42,27 @@ type Session struct {
 	Token       message.Token
 	Name        string
 	Def         []byte
-	LocalActors []LocalActor
+	LocalActors []Actor
 	Clients     []Client
 	Stories     []Story
 }
 
 type Client struct {
 	Token  message.Token
-	Actors []Actor
+	Actors []ClientActor
 }
 
-type Actor struct {
-	Token   message.Token
-	Name    string
-	Config  []byte
-	Story   StoryInfo
-	Index   byte
+type ClientActor struct {
+	Actor
 	Channel chan<- []byte // channel to which the actor's actions are put
 }
 
-type LocalActor struct {
-	Actor
-
-	// InputCh is the channel from which the local actor's actions are read. Optional.
-	InputCh <-chan []byte
+type Actor struct {
+	Token  message.Token
+	Name   string
+	Config []byte
+	Story  StoryInfo
+	Index  byte
 }
 
 type StoryInfo struct {
@@ -121,14 +118,6 @@ func (s *Session) Validate() error {
 			return errors.New("local actor tokens are not unique")
 		}
 		localActors[a.Token] = struct{}{}
-
-		//if a.Channel == nil {
-		//	return fmt.Errorf("channel not provided for local actor %d", i)
-		//}
-
-		//if a.InputCh == nil {
-		//	return fmt.Errorf("input channel not provided for local actor %d", i)
-		//}
 
 		_, ok = storyActors[a.Story.Token]
 		if !ok {

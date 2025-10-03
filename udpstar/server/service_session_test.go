@@ -35,26 +35,30 @@ func TestSessionService_HandleStoryConfirm(t *testing.T) {
 		Clients: []Client{
 			{
 				Token: tokenClient1,
-				Actors: []Actor{
+				Actors: []ClientActor{
 					{
-						Token:   tokenActor1,
-						Name:    "marko",
-						Config:  []byte{1},
-						Story:   StoryInfo{Token: tokenStory},
-						Index:   0,
+						Actor: Actor{
+							Token:  tokenActor1,
+							Name:   "marko",
+							Config: []byte{1},
+							Story:  StoryInfo{Token: tokenStory},
+							Index:  0,
+						},
 						Channel: actor1Ch,
 					},
 				},
 			},
 			{
 				Token: tokenClient2,
-				Actors: []Actor{
+				Actors: []ClientActor{
 					{
-						Token:   tokenActor2,
-						Name:    "ogi",
-						Config:  []byte{2},
-						Story:   StoryInfo{Token: tokenStory},
-						Index:   1,
+						Actor: Actor{
+							Token:  tokenActor2,
+							Name:   "ogi",
+							Config: []byte{2},
+							Story:  StoryInfo{Token: tokenStory},
+							Index:  1,
+						},
 						Channel: actor2Ch,
 					},
 				},

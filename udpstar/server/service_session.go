@@ -124,10 +124,6 @@ func (s *sessionService) start(ctx context.Context) error {
 		return story.Channel
 	}))
 
-	localActorActionCh := channel.Context(ctx, channel.JoinSlicePtr(nil, s.localActors, func(actor *localActorData) <-chan []byte {
-		return actor.InputCh
-	}))
-
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 
@@ -212,22 +208,6 @@ func (s *sessionService) start(ctx context.Context) error {
 			}
 
 			close(storyReq.responseCh)
-
-		case actorActionData, ok := <-localActorActionCh:
-			if !ok {
-				continue
-			}
-
-			actor := &s.localActors[actorActionData.ID]
-
-			if actor.Channel != nil {
-				action := actorActionData.Data
-
-				select {
-				case <-s.doneCh:
-				case actor.Channel <- action:
-				}
-			}
 		}
 	}
 }
