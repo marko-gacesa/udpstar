@@ -163,7 +163,7 @@ func (c *Client) Start(ctx context.Context) {
 	close(c.pingCh)
 	close(c.sendCh)
 
-	c.log.Debug("client stopped")
+	c.log.Info("client stopped")
 }
 
 // HandleIncomingMessages handles incoming network messages intended for this client.

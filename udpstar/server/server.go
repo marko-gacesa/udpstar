@@ -111,13 +111,13 @@ func (s *Server) Start(ctx context.Context) {
 	s.mx.Lock()
 
 	for sessionToken, entry := range s.sessionMap {
-		s.log.Debug("aborting session...",
+		s.log.Info("aborting session...",
 			"session", sessionToken)
 		entry.cancelFn()
 	}
 
 	for lobbyToken, entry := range s.lobbyMap {
-		s.log.Debug("aborting lobby...",
+		s.log.Info("aborting lobby...",
 			"lobby", lobbyToken)
 		entry.cancelFn()
 	}

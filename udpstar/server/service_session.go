@@ -303,12 +303,15 @@ func (s *sessionService) updateState(ctx context.Context) *storymessage.LatencyR
 		}
 	}
 
+	oldState := s.state
 	s.state = newState
 
 	if s.controller != nil {
-		if s.state == SessionStateNotInSync && newState != SessionStateNotInSync {
+		if oldState == SessionStateNotInSync && newState != SessionStateNotInSync {
+			s.log.Info("session resumable - again in sync")
 			s.controller.Resume()
-		} else if s.state != SessionStateNotInSync && newState == SessionStateNotInSync {
+		} else if oldState != SessionStateNotInSync && newState == SessionStateNotInSync {
+			s.log.Info("session suspended - not in sync")
 			s.controller.Suspend()
 		}
 	}

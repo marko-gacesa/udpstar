@@ -151,13 +151,14 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 
 			size := msg.Put(buffer[:])
 			if size > message.MaxMessageSize {
-				c.log.Warn("sending large message",
+				c.log.Warn("client sends large message",
+					"command", msg.Command().String(),
+					"size", size)
+			} else {
+				c.log.Debug("client sends message",
+					"command", msg.Command().String(),
 					"size", size)
 			}
-
-			c.log.Debug("client sends message",
-				"command", msg.Command().String(),
-				"size", size)
 
 			err := c.sender.Send(buffer[:size])
 			if err != nil {
@@ -213,7 +214,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	close(c.pingCh)
 	close(c.sendCh)
 
-	c.log.Debug("lobby client stopped")
+	c.log.Info("lobby client stopped")
 
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
