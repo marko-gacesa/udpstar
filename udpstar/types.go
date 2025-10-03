@@ -48,14 +48,14 @@ type LobbySlot struct {
 	Latency      time.Duration
 }
 
-type LatencyState = storymessage.ClientState
+type ClientState = storymessage.ClientState
 
 const (
-	ClientStateNew     LatencyState = storymessage.ClientStateNew
-	ClientStateLocal   LatencyState = storymessage.ClientStateLocal
-	ClientStateGood    LatencyState = storymessage.ClientStateGood
-	ClientStateLagging LatencyState = storymessage.ClientStateLagging
-	ClientStateLost    LatencyState = storymessage.ClientStateLost
+	ClientStateNew     ClientState = storymessage.ClientStateNew
+	ClientStateLocal   ClientState = storymessage.ClientStateLocal
+	ClientStateGood    ClientState = storymessage.ClientStateGood
+	ClientStateLagging ClientState = storymessage.ClientStateLagging
+	ClientStateLost    ClientState = storymessage.ClientStateLost
 )
 
 type LatencyInfo struct {
@@ -65,7 +65,7 @@ type LatencyInfo struct {
 
 type LatencyActor struct {
 	Name    string
-	State   LatencyState
+	State   ClientState
 	Latency time.Duration
 }
 

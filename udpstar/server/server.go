@@ -13,6 +13,7 @@ import (
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"log/slog"
 	"net"
+	"slices"
 	"sync"
 	"time"
 )
@@ -29,6 +30,8 @@ var _ interface {
 		clientData map[message.Token]ClientData,
 		controller controller.Controller,
 	) error
+
+	Latencies(sessionToken message.Token) []udpstar.LatencyActor
 
 	StartLobby(ctx context.Context, lobbySetup *LobbySetup) error
 	FinishLobby(
@@ -234,6 +237,23 @@ func (s *Server) startSession(
 	}()
 
 	return nil
+}
+
+func (s *Server) Latencies(sessionToken message.Token) []udpstar.LatencyActor {
+	s.mx.Lock()
+	session, ok := s.sessionMap[sessionToken]
+	s.mx.Unlock()
+
+	if !ok {
+		return nil
+	}
+
+	sessionSrvLatency := &session.srv.latencyData
+
+	sessionSrvLatency.Lock()
+	defer sessionSrvLatency.Unlock()
+
+	return slices.Clone(sessionSrvLatency.latencies)
 }
 
 // StartLobby starts lobby. A gathering area for the actors before the session starts.

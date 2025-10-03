@@ -37,6 +37,7 @@ type sessionService struct {
 	clients     []*clientService
 	stories     []storyData
 	localActors []localActorData
+	latencyData latencyData
 
 	storyGetCh chan storyGetPackage
 
@@ -60,7 +61,8 @@ func newSessionService(
 	controller controller.Controller,
 	log *slog.Logger,
 ) (*sessionService, error) {
-	if err := session.Validate(); err != nil {
+	err := session.Validate()
+	if err != nil {
 		return nil, err
 	}
 
@@ -85,6 +87,11 @@ func newSessionService(
 		s.localActors[i] = newLocalActorData(session.LocalActors[i])
 	}
 
+	s.latencyData, err = makeLatencyData(session)
+	if err != nil {
+		return nil, err
+	}
+
 	s.storyGetCh = make(chan storyGetPackage)
 
 	s.controller = controller
@@ -99,7 +106,7 @@ func (s *sessionService) Start(ctx context.Context) error {
 		return ErrAlreadyStarted
 	}
 
-	s.state = SessionStateNotInSync
+	s.state = SessionStateActive
 
 	g, ctxGroup := errgroup.WithContext(ctx)
 
@@ -134,12 +141,10 @@ func (s *sessionService) start(ctx context.Context) error {
 			return ctx.Err()
 
 		case <-ticker.C:
-			msgLatencyReport := s.updateState(ctx)
+			msgLatencyReport := s.updateState()
 			if msgLatencyReport == nil {
 				continue
 			}
-
-			s.log.Debug("sending latency report to clients")
 
 			for _, client := range s.clients {
 				client.Send(msgLatencyReport)
@@ -257,7 +262,7 @@ func (s *sessionService) HandleStoryConfirm(
 	}
 }
 
-func (s *sessionService) updateState(ctx context.Context) *storymessage.LatencyReport {
+func (s *sessionService) updateState() *storymessage.LatencyReport {
 	if s.state == SessionStateNew || s.state == SessionStateDone {
 		return nil
 	}
@@ -266,28 +271,18 @@ func (s *sessionService) updateState(ctx context.Context) *storymessage.LatencyR
 		HeaderServer: storymessage.HeaderServer{
 			SessionToken: s.Token,
 		},
-		Latencies: nil,
-	}
-
-	for _, actor := range s.localActors {
-		msg.Latencies = append(msg.Latencies, storymessage.LatencyReportActor{
-			Name:    actor.Name,
-			State:   storymessage.ClientStateLocal,
-			Latency: 0,
-		})
+		Latencies: make([]storymessage.LatencyReportActor, s.latencyData.Count()),
 	}
 
 	newState := SessionStateActive
+
+	s.latencyData.Lock()
 
 	for _, c := range s.clients {
 		state := c.GetState()
 
 		for i := range c.remoteActors {
-			msg.Latencies = append(msg.Latencies, storymessage.LatencyReportActor{
-				Name:    c.remoteActors[i].Name,
-				State:   state.State,
-				Latency: state.Latency,
-			})
+			s.latencyData.UpdateClientActor(&c.remoteActors[i].Actor, state)
 		}
 
 		switch state.State {
@@ -302,6 +297,12 @@ func (s *sessionService) updateState(ctx context.Context) *storymessage.LatencyR
 			newState = SessionStateNotInSync
 		}
 	}
+
+	for i, l := range s.latencyData.latencies {
+		msg.Latencies[i] = storymessage.LatencyReportActor(l)
+	}
+
+	s.latencyData.Unlock()
 
 	oldState := s.state
 	s.state = newState

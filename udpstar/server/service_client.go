@@ -140,7 +140,7 @@ func (c *clientService) GetState() clientStatePackage {
 		dur := time.Since(c.data.LastMsgReceived)
 		if dur > 3*time.Second {
 			c.state = storymessage.ClientStateLost
-		} else if dur > 500*time.Millisecond {
+		} else if dur > 1200*time.Millisecond {
 			c.state = storymessage.ClientStateLagging
 		}
 	}
