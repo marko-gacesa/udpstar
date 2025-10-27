@@ -27,6 +27,9 @@ var _ interface {
 	// messages processed time when compared to the server. Ideally should be zero.
 	Quality() time.Duration
 
+	// Latency returns the client's current latency.
+	Latency() time.Duration
+
 	// Latencies returns network latency for all participants.
 	Latencies() udpstar.LatencyInfo
 } = (*Client)(nil)
@@ -238,6 +241,11 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 // messages processed time when compared to the server. Ideally should be zero.
 func (c *Client) Quality() time.Duration {
 	return c.storySrv.Quality()
+}
+
+// Latency returns the client's current latency.
+func (c *Client) Latency() time.Duration {
+	return c.pingSrv.Latency()
 }
 
 // Latencies returns network latency for all participants.

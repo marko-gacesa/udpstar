@@ -83,8 +83,16 @@ func (s *Session) Validate() error {
 		return errors.New("no clients defined")
 	}
 
+	if len(s.Clients) > 64 {
+		return errors.New("too many clients defined")
+	}
+
 	if len(s.Stories) == 0 {
 		return errors.New("no stories defined")
+	}
+
+	if len(s.Stories) > 64 {
+		return errors.New("too many stories defined")
 	}
 
 	storyActors := map[message.Token]int{}

@@ -48,8 +48,16 @@ func (s *Session) Validate() error {
 		return errors.New("no stories defined")
 	}
 
+	if len(s.Stories) > 8 {
+		return errors.New("too many stories defined")
+	}
+
 	if len(s.Actors) == 0 {
 		return errors.New("no actors defined")
+	}
+
+	if len(s.Actors) > 64 {
+		return errors.New("too many actors defined")
 	}
 
 	storyActors := map[message.Token]int{}
@@ -135,7 +143,7 @@ func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error
 			actorMap[idx] = StoryActorInfo{
 				Token:    actor.Token,
 				Name:     actor.Name,
-				ActorIdx: idx,
+				ActorIdx: byte(actorIdx),
 			}
 		}
 	}
