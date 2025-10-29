@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023, 2025 by Marko Gaćeša
 
 package sequence
 
@@ -22,18 +22,25 @@ type Recent struct {
 	maxRecentTotalDelay    time.Duration
 	maxRecentTotalByteSize int
 
-	entries []Entry
+	entries []recentEntry
+}
+
+type recentEntry struct {
+	Entry
+	cumulativeDelay time.Duration
 }
 
 var _ Story = (*Recent)(nil)
 
 func NewRecent(capacity int) *Recent {
 	return &Recent{
-		entries: make([]Entry, capacity),
+		entries: make([]recentEntry, capacity),
 	}
 }
 
 func (r *Recent) Push(entry Entry) {
+	r.incCumulativeDelay(entry.Delay)
+
 	if r.size < len(r.entries) {
 		r.size++
 	}
@@ -41,7 +48,11 @@ func (r *Recent) Push(entry Entry) {
 	if r.head == len(r.entries) {
 		r.head = 0
 	}
-	r.entries[r.head] = entry
+
+	r.entries[r.head] = recentEntry{
+		Entry:           entry,
+		cumulativeDelay: 0,
+	}
 
 	r.trimTail()
 }
@@ -56,7 +67,7 @@ func (r *Recent) Pop() (entry Entry, found bool) {
 		tail += len(r.entries)
 	}
 
-	entry = r.entries[tail]
+	entry = r.entries[tail].Entry
 	found = true
 
 	r.size--
@@ -69,9 +80,9 @@ func (r *Recent) Pop() (entry Entry, found bool) {
 func (r *Recent) Remove(seq Sequence) (entry Entry, found bool) {
 	for n, idx := r.size, r.head; n > 0; n-- {
 		if r.entries[idx].Seq == seq {
-			entry = r.entries[idx]
+			entry = r.entries[idx].Entry
 			found = true
-			r.entries[idx] = Entry{}
+			r.entries[idx] = recentEntry{}
 			r.holes++
 			break
 		}
@@ -96,7 +107,7 @@ func (r *Recent) Remove(seq Sequence) (entry Entry, found bool) {
 func (r *Recent) RemoveFn(shouldRemove func(seq Sequence) bool) {
 	for n, idx := r.size, r.head; n > 0; n-- {
 		if r.entries[idx].Seq != SequenceNone && shouldRemove(r.entries[idx].Seq) {
-			r.entries[idx] = Entry{}
+			r.entries[idx] = recentEntry{}
 			r.holes++
 		}
 
@@ -150,14 +161,14 @@ func (r *Recent) Recent() []Entry {
 	var currSize int
 	for n, idx := r.size, r.head; n > 0; n-- {
 		if r.entries[idx].Seq != SequenceNone {
-			currDelay += r.entries[idx].Delay
+			currDelay = r.entries[idx].cumulativeDelay
 			currSize += len(r.entries[idx].Payload)
 			if (r.maxRecentTotalDelay > 0 && currDelay > r.maxRecentTotalDelay) ||
 				(r.maxRecentTotalByteSize > 0 && currSize > r.maxRecentTotalByteSize) {
 				break
 			}
 
-			entries = append(entries, r.entries[idx])
+			entries = append(entries, r.entries[idx].Entry)
 		}
 
 		if idx == 0 {
@@ -188,7 +199,7 @@ func (r *Recent) Iterate(fn func(entry Entry) bool) {
 
 	for n, idx := r.size, tail; n > 0; n-- {
 		if r.entries[idx].Seq != SequenceNone {
-			if !fn(r.entries[idx]) {
+			if !fn(r.entries[idx].Entry) {
 				return
 			}
 		}
@@ -242,6 +253,24 @@ func (r *Recent) trimTail() {
 
 		r.holes--
 		r.size--
+
+		idx++
+		if idx == len(r.entries) {
+			idx = 0
+		}
+	}
+}
+
+func (r *Recent) incCumulativeDelay(d time.Duration) {
+	tail := r.head - r.size + 1
+	if tail < 0 {
+		tail += len(r.entries)
+	}
+
+	for n, idx := r.size, tail; n > 0; n-- {
+		if r.entries[idx].Seq != SequenceNone {
+			r.entries[idx].cumulativeDelay += d
+		}
 
 		idx++
 		if idx == len(r.entries) {

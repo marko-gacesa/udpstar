@@ -47,6 +47,7 @@ func newActionService(
 
 func (s *actionService) Start(ctx context.Context) {
 	const pushbackDelay = 30 * time.Millisecond
+	const idleDelay = time.Second
 
 	actorActionCh := channel.Context(ctx, channel.JoinSlicePtr(s.doneCh, s.actorActions, func(actor *actorAction) <-chan []byte {
 		return actor.InputCh
@@ -72,12 +73,12 @@ func (s *actionService) Start(ctx context.Context) {
 			}
 
 			actor := &s.actorActions[actorActionData.ID]
-			actor.resetResendTimer(pushbackDelay + s.latency.Latency())
 
 			entry := actor.enum.Push(actorActionData.Data)
 			actor.actions.Push(entry)
 
-			_ = s.sendActions(actor)
+			s.sendActions(actor, false)
+			actor.resetResendTimer(pushbackDelay + s.latency.Latency())
 
 		case timeData, ok := <-resendTimerCh:
 			if !ok {
@@ -87,23 +88,20 @@ func (s *actionService) Start(ctx context.Context) {
 
 			actor := &s.actorActions[timeData.ID]
 
-			actionCount := s.sendActions(actor)
-			if actionCount == 0 {
-				continue
-			}
-
 			var delay time.Duration
 
-			if actor.unansweredCount < 2 {
+			switch actor.unansweredCount {
+			case 1:
 				delay = pushbackDelay + s.latency.Latency()
-			} else if actor.unansweredCount < 8 {
+				actor.unansweredCount++
+			case 2, 3, 4, 5, 6, 7:
 				delay = time.Duration(actor.unansweredCount) * 100 * time.Millisecond
-			} else {
-				continue
+				actor.unansweredCount++
+			default:
+				delay = idleDelay
 			}
 
-			actor.unansweredCount++
-
+			s.sendActions(actor, true)
 			actor.resetResendTimer(delay)
 
 		case msg := <-s.confirmCh:
@@ -141,23 +139,24 @@ func (s *actionService) Start(ctx context.Context) {
 					Actions:    missing,
 				}
 			}
+
+			if actor.actions.Len() == 0 {
+				actor.resetResendTimer(idleDelay)
+			}
 		}
 	}
 }
 
-func (s *actionService) sendActions(actor *actorAction) int {
+func (s *actionService) sendActions(actor *actorAction, sendEmpty bool) {
 	actions := actor.actions.Recent()
-	if len(actions) == 0 {
-		actor.actions.Clear()
-		return 0
+	if len(actions) == 0 && !sendEmpty {
+		return
 	}
 
 	s.sendCh <- &storymessage.ActionPack{
 		ActorToken: actor.Token,
 		Actions:    actions,
 	}
-
-	return len(actions)
 }
 
 func (s *actionService) ConfirmActions(msg *storymessage.ActionConfirm) {

@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023, 2025 by Marko Gaćeša
 
 package sequence
 
@@ -421,7 +421,7 @@ func TestRecent_RecentLimits(t *testing.T) {
 		{
 			name:                  "dur-limit",
 			capacity:              4,
-			recentTotalDelayLimit: 15,
+			recentTotalDelayLimit: 10,
 			push: []Entry{
 				{Seq: 6, Delay: 6},
 				{Seq: 7, Delay: 6},
