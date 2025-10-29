@@ -11,6 +11,7 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -32,6 +33,9 @@ var _ interface {
 
 	// Latencies returns network latency for all participants.
 	Latencies() udpstar.LatencyInfo
+
+	// SinceLastServerMessage return duration since last server contact.
+	SinceLastServerMessage() time.Duration
 } = (*Client)(nil)
 
 //******************************************************************************
@@ -51,6 +55,8 @@ type Client struct {
 
 	latencyMx sync.Mutex
 	latencies udpstar.LatencyInfo
+
+	lastMessage atomic.Int64
 
 	log *slog.Logger
 }
@@ -199,6 +205,8 @@ func (c *Client) HandleIncomingMessages(data []byte) {
 }
 
 func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
+	c.lastMessage.Store(time.Now().UnixNano())
+
 	msgType := msg.Type()
 	switch msgType {
 	case storymessage.TypeTest:
@@ -254,4 +262,8 @@ func (c *Client) Latencies() udpstar.LatencyInfo {
 	defer c.latencyMx.Unlock()
 
 	return c.latencies
+}
+
+func (c *Client) SinceLastServerMessage() time.Duration {
+	return time.Duration(time.Now().UnixNano() - c.lastMessage.Load())
 }
