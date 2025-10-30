@@ -127,9 +127,9 @@ func (s *sessionService) Start(ctx context.Context) error {
 }
 
 func (s *sessionService) start(ctx context.Context) error {
-	storyEntryCh := channel.Context(ctx, channel.JoinSlicePtr(nil, s.stories, func(story *storyData) <-chan []byte {
+	storyEntryCh := channel.JoinSlicePtr(s.doneCh, s.stories, func(story *storyData) <-chan []byte {
 		return story.Channel
-	}))
+	})
 
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
