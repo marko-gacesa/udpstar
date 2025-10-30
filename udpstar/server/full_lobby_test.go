@@ -336,7 +336,7 @@ func compareLobby(t *testing.T, l *slog.Logger, key string, a, b udpstar.Lobby) 
 	}
 
 	n := len(a.Slots)
-	for i := 0; i < n; i++ {
+	for i := range n {
 		as := a.Slots[i]
 		bs := b.Slots[i]
 

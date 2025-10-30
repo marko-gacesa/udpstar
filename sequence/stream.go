@@ -220,7 +220,7 @@ func (s *Stream) Quality() time.Duration {
 	}
 
 	var total time.Duration
-	for i := 0; i < n; i++ {
+	for i := range n {
 		total += s.delayHistory[i].Diff()
 	}
 

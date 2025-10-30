@@ -120,7 +120,7 @@ func (s *Serializer) PutEntries(v []sequence.Entry) {
 		panic("max len of sequence entry array is 255")
 	}
 	s.Put8(uint8(l))
-	for i := 0; i < l; i++ {
+	for i := range l {
 		s.PutEntry(v[i])
 	}
 }
@@ -136,7 +136,7 @@ func (s *Serializer) PutRanges(v []sequence.Range) {
 		panic("max len of sequence range array is 255")
 	}
 	s.Put8(uint8(l))
-	for i := 0; i < l; i++ {
+	for i := range l {
 		s.PutRange(v[i])
 	}
 }
