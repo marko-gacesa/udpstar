@@ -131,6 +131,12 @@ func (s *sessionService) start(ctx context.Context) error {
 		return story.Channel
 	})
 
+	defer func() {
+		for i := range s.stories {
+			go channel.Drain(s.stories[i].Channel)
+		}
+	}()
+
 	ticker := time.NewTicker(3 * time.Second)
 	defer ticker.Stop()
 

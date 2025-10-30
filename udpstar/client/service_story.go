@@ -52,6 +52,12 @@ func (s *storyService) Start(ctx context.Context) {
 
 	defer close(s.doneCh)
 
+	defer func() {
+		for _, story := range s.storyStreams {
+			close(story.story.Channel)
+		}
+	}()
+
 	for {
 		select {
 		case <-ctx.Done():
