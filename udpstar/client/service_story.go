@@ -74,6 +74,8 @@ func (s *storyService) Start(ctx context.Context) {
 			lastSeq := story.stream.Sequence()
 			s.sendConfirm(story.story.Token, lastSeq, &story.missing)
 
+			story.resetRequestTimer(requestDelay)
+
 		case msg := <-s.receiveCh:
 			var story *storyStream
 			for i := range s.storyStreams {

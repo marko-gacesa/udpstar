@@ -511,7 +511,7 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 		msgTest := msg.(*storymessage.TestClient)
 		s.log.Info("server received test message",
 			"addr", addr,
-			"msg", msgType.String(),
+			"msg", msgType,
 			"client", clientToken,
 			"session", sessionToken,
 			"payload", msgTest.Payload)
