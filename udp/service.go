@@ -5,9 +5,10 @@ package udp
 import (
 	"context"
 	"errors"
-	"github.com/marko-gacesa/udpstar/udpstar/util"
+	"fmt"
 	"log/slog"
 	"net"
+	"runtime/debug"
 	"sync"
 	"time"
 )
@@ -253,7 +254,12 @@ func (s *Service) runServer() {
 	}()
 
 	err := udpServer.Listen(ctx, s.port, func(data []byte, addr net.UDPAddr) []byte {
-		defer util.Recover(s.logger)
+		defer func() {
+			if r := recover(); r != nil {
+				message := fmt.Sprintf("panic:\n[%T] %v\n%s\n", r, r, debug.Stack())
+				s.logger.Error(message)
+			}
+		}()
 
 		s.mx.Lock()
 		h := s.handler

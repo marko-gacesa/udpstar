@@ -1,8 +1,9 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package ping
 
 import (
+	"errors"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"time"
 )
@@ -17,21 +18,21 @@ type Pong struct {
 
 func (m *Pong) Size() int { return SizeOfPong }
 
-func (m *Pong) Put(buf []byte) int {
+func (m *Pong) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryPing)
 	s.Put32(m.MessageID)
 	s.PutTime(m.ClientTime)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *Pong) Get(buf []byte) int {
+func (m *Pong) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryPing); !ok {
-		return 0
+		return nil, errors.New("invalid ping message")
 	}
 	s.Get32(&m.MessageID)
 	s.GetTime(&m.ClientTime)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }

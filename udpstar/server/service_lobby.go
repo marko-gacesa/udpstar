@@ -88,8 +88,9 @@ func (s *lobbyService) Start(ctx context.Context) error {
 
 			// Broadcast the message if there are still available slots.
 			if s.state == lobbymessage.StateActive && len(s.broadcastAddr.IP) > 0 {
-				size := msg.Put(buffer[:])
-				err := s.sender.Send(buffer[:size], s.broadcastAddr)
+				a := msg.Put(buffer[:0])
+
+				err := s.sender.Send(a, s.broadcastAddr)
 				if err != nil {
 					s.log.Error("failed to broadcast",
 						"err", err.Error())
@@ -119,8 +120,9 @@ func (s *lobbyService) Start(ctx context.Context) error {
 					}
 				}
 
-				size := msg.Put(buffer[:])
-				err := s.sender.Send(buffer[:size], cliInfo.Address)
+				a := msg.Put(buffer[:0])
+
+				err := s.sender.Send(a, cliInfo.Address)
 				if err != nil {
 					s.log.Error("failed to send to client",
 						"client", clientToken,
@@ -237,9 +239,9 @@ func (s *lobbyService) remoteRequest(msgReq *lobbymessage.Request, addr net.UDPA
 	}
 
 	var buffer [4096]byte
+	a := msg.Put(buffer[:0])
 
-	size := msg.Put(buffer[:])
-	err := s.sender.Send(buffer[:size], addr)
+	err := s.sender.Send(a, addr)
 	if err != nil {
 		s.log.Error("failed to send to client",
 			"client", clientToken,

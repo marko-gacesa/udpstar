@@ -146,7 +146,7 @@ func (s *Server) HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte {
 	} else if msgLobby := lobbymessage.ParseClient(data); msgLobby != nil {
 		s.handleLobby(msgLobby, addr)
 	} else {
-		s.log.Warn("received unrecognized message",
+		s.log.Warn("server received unrecognized message",
 			"addr", addr)
 	}
 
@@ -475,9 +475,10 @@ func (s *Server) handlePingMessage(msgPing *pingmessage.Ping) []byte {
 		ClientTime: msgPing.ClientTime,
 	}
 
-	responseBuffer := make([]byte, msgPong.Size())
-	msgPong.Put(responseBuffer)
-	return responseBuffer
+	var responseBuffer [pingmessage.SizeOfPong]byte
+	a := msgPong.Put(responseBuffer[:0])
+
+	return a
 }
 
 func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDPAddr) []byte {
@@ -540,8 +541,9 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 		}
 
 		responseBuffer := make([]byte, msgActionConfirm.Size())
-		msgActionConfirm.Put(responseBuffer)
-		return responseBuffer
+		a := msgActionConfirm.Put(responseBuffer[:0])
+
+		return a
 
 	case storymessage.TypeStory:
 		msgStoryConfirm := msg.(*storymessage.StoryConfirm)
@@ -568,8 +570,9 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 		}
 
 		responseBuffer := make([]byte, msgStoryPack.Size())
-		msgStoryPack.Put(responseBuffer)
-		return responseBuffer
+		a := msgStoryPack.Put(responseBuffer[:0])
+
+		return a
 	}
 
 	return nil

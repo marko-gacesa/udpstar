@@ -1,4 +1,4 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package client
 
@@ -6,7 +6,6 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
-	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"net"
 	"sync"
@@ -89,8 +88,6 @@ func (c *LobbyListener) List(version int) ([]udpstar.LobbyListenerInfo, int) {
 
 // HandleBroadcastMessages handles incoming broadcast network messages.
 func (c *LobbyListener) HandleBroadcastMessages(data []byte, addr net.UDPAddr) {
-	defer util.Recover(c.log)
-
 	if len(data) == 0 {
 		return
 	}

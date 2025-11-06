@@ -1,4 +1,4 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package udp
 

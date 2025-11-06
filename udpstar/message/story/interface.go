@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package story
 
@@ -10,7 +10,7 @@ import (
 type Message interface {
 	message.Getter
 	message.Putter
-	message.Sizer
+	Size() int
 	Type() Type
 }
 

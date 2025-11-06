@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package ping
 
@@ -15,15 +15,15 @@ func TestSerializePing(t *testing.T) {
 
 	var buf [SizeOfPing]byte
 
-	size := msg.Put(buf[:])
+	a := msg.Put(buf[:0])
+	size := len(a)
 
 	if size != SizeOfPing {
 		t.Error("size mismatch")
 		return
 	}
 
-	msgClone, ok := ParsePing(buf[:size])
-
+	msgClone, ok := ParsePing(a)
 	if !ok {
 		t.Error("failed parse")
 		return
@@ -41,15 +41,16 @@ func TestSerializePong(t *testing.T) {
 	}
 
 	var buf [SizeOfPong]byte
-	size := msg.Put(buf[:])
+
+	a := msg.Put(buf[:0])
+	size := len(a)
 
 	if size != SizeOfPong {
 		t.Error("size mismatch")
 		return
 	}
 
-	msgClone, ok := ParsePong(buf[:size])
-
+	msgClone, ok := ParsePong(a)
 	if !ok {
 		t.Error("failed parse")
 		return
@@ -58,4 +59,38 @@ func TestSerializePong(t *testing.T) {
 	if msg.MessageID != msgClone.MessageID || !msg.ClientTime.Equal(msgClone.ClientTime) {
 		t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
 	}
+}
+
+func TestPingPong(t *testing.T) {
+	msgPing := Ping{
+		MessageID:  42,
+		ClientTime: time.Now(),
+	}
+
+	a := msgPing.Put(nil)
+
+	time.Sleep(time.Millisecond)
+
+	msgPingRcv, ok := ParsePing(a)
+	if !ok {
+		t.Error("failed parse ping")
+		return
+	}
+
+	msgPong := Pong{
+		MessageID:  msgPingRcv.MessageID,
+		ClientTime: msgPingRcv.ClientTime,
+	}
+
+	a = msgPong.Put(nil)
+
+	time.Sleep(time.Millisecond)
+
+	msgPongRcv, ok := ParsePong(a)
+	if !ok {
+		t.Error("failed parse pong")
+		return
+	}
+
+	t.Logf("msgID=%d latency=%s", msgPongRcv.MessageID, time.Since(msgPongRcv.ClientTime))
 }

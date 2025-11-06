@@ -8,7 +8,6 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -108,9 +107,9 @@ func (c *Client) Start(ctx context.Context) {
 	go func() {
 		var buffer [pingmessage.SizeOfPing]byte
 		for ping := range c.pingCh {
-			size := ping.Put(buffer[:])
+			a := ping.Put(buffer[:0])
 
-			err := c.sender.Send(buffer[:size])
+			err := c.sender.Send(a)
 			if err != nil {
 				c.log.Error("failed to send ping message to server",
 					"error", err.Error())
@@ -126,7 +125,9 @@ func (c *Client) Start(ctx context.Context) {
 			msg.SetClientToken(c.clientToken)
 			msg.SetLatency(c.pingSrv.Latency())
 
-			size := msg.Put(buffer[:])
+			a := msg.Put(buffer[:0])
+			size := len(a)
+
 			if size > message.MaxMessageSize {
 				c.log.Warn("sending large message",
 					"size", size)
@@ -136,7 +137,7 @@ func (c *Client) Start(ctx context.Context) {
 				"type", msg.Type().String(),
 				"size", size)
 
-			err := c.sender.Send(buffer[:size])
+			err := c.sender.Send(a)
 			if err != nil {
 				c.log.Error("failed to send message to server",
 					"size", size,
@@ -177,8 +178,6 @@ func (c *Client) Start(ctx context.Context) {
 
 // HandleIncomingMessages handles incoming network messages intended for this client.
 func (c *Client) HandleIncomingMessages(data []byte) {
-	defer util.Recover(c.log)
-
 	if len(data) == 0 {
 		c.log.Warn("received empty message")
 		return
@@ -201,7 +200,7 @@ func (c *Client) HandleIncomingMessages(data []byte) {
 		return
 	}
 
-	c.log.Warn("received unrecognized message")
+	c.log.Warn("client received unrecognized message")
 }
 
 func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {

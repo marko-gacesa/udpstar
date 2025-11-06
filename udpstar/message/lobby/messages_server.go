@@ -1,8 +1,9 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package lobby
 
 import (
+	"errors"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"time"
 )
@@ -43,7 +44,7 @@ func (m *Setup) Size() int {
 	return size
 }
 
-func (m *Setup) Put(buf []byte) int {
+func (m *Setup) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryLobby)
@@ -62,13 +63,13 @@ func (m *Setup) Put(buf []byte) int {
 
 	s.Put8(byte(m.State))
 
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *Setup) Get(buf []byte) int {
+func (m *Setup) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby); !ok {
-		return 0
+		return nil, errors.New("invalid setup message")
 	}
 	s.Get(&m.HeaderServer)
 	s.GetStr(&m.Name)
@@ -87,5 +88,5 @@ func (m *Setup) Get(buf []byte) int {
 
 	s.Get8((*byte)(&m.State))
 
-	return s.Len()
+	return s.Bytes(), s.Error()
 }

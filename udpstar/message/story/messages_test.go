@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package story
 
@@ -45,8 +45,8 @@ func TestLenStoryConfirm(t *testing.T) {
 		Missing:      make([]sequence.Range, LenStoryConfirm),
 	}
 
-	var buf [1024]byte
-	size := msg.Put(buf[:])
+	a := msg.Put(nil)
+	size := len(a)
 
 	t.Logf("maximum size of StoryConfirm: %d", size)
 	if size > message.MaxMessageSize {
@@ -64,8 +64,8 @@ func TestLenLatencyReport(t *testing.T) {
 		msg.Latencies[i].Name = strings.Repeat("a", LenLatencyReportName)
 	}
 
-	var buf [1024]byte
-	size := msg.Put(buf[:])
+	a := msg.Put(nil)
+	size := len(a)
 
 	t.Logf("maximum size of LatencyReport: %d", size)
 	if size > message.MaxMessageSize {

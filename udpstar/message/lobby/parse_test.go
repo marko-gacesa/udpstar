@@ -1,4 +1,4 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package lobby
 
@@ -45,13 +45,16 @@ func TestParseClient(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(msg.Command().String(), func(t *testing.T) {
-			size := msg.Put(buf[:])
+			a := buf[:0]
+
+			a = msg.Put(a)
+			size := len(a)
 
 			if msg.Size() != size {
 				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
 			}
 
-			msgClone := ParseClient(buf[:size])
+			msgClone := ParseClient(a)
 
 			if !reflect.DeepEqual(msg, msgClone) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
@@ -128,13 +131,16 @@ func TestSerializeServer(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(reflect.TypeOf(msg).String(), func(t *testing.T) {
-			size := msg.Put(buf[:])
+			a := buf[:0]
+
+			a = msg.Put(a)
+			size := len(a)
 
 			if msg.Size() != size {
 				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
 			}
 
-			msgClone := ParseServer(buf[:size])
+			msgClone := ParseServer(a)
 
 			if !reflect.DeepEqual(msg, msgClone) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)

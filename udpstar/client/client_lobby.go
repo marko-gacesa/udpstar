@@ -1,4 +1,4 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package client
 
@@ -9,7 +9,6 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
-	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"slices"
 	"sync"
@@ -130,9 +129,9 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	go func() {
 		var buffer [pingmessage.SizeOfPing]byte
 		for ping := range c.pingCh {
-			size := ping.Put(buffer[:])
+			a := ping.Put(buffer[:0])
 
-			err := c.sender.Send(buffer[:size])
+			err := c.sender.Send(a)
 			if err != nil {
 				c.log.Error("failed to send ping message to server",
 					"error", err.Error())
@@ -149,7 +148,9 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 			msg.SetClientToken(c.clientToken)
 			msg.SetLatency(c.pingSrv.Latency())
 
-			size := msg.Put(buffer[:])
+			a := msg.Put(buffer[:0])
+			size := len(a)
+
 			if size > message.MaxMessageSize {
 				c.log.Warn("client sends large message",
 					"command", msg.Command().String(),
@@ -160,7 +161,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 					"size", size)
 			}
 
-			err := c.sender.Send(buffer[:size])
+			err := c.sender.Send(a)
 			if err != nil {
 				c.log.Error("failed to send message to server",
 					"size", size,
@@ -261,8 +262,6 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 
 // HandleIncomingMessages handles incoming network messages intended for this client.
 func (c *Lobby) HandleIncomingMessages(data []byte) {
-	defer util.Recover(c.log)
-
 	if len(data) == 0 {
 		c.log.Warn("received empty message")
 		return
@@ -282,7 +281,8 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 
 		msgSetup, ok := msg.(*lobbymessage.Setup)
 		if !ok {
-			c.log.Warn("received unrecognized message")
+			c.log.Warn("client lobby received unrecognized message")
+			return
 		}
 
 		c.updateData(msgSetup)

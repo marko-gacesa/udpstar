@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023, 2024 by Marko Gaćeša
 
 package story
 

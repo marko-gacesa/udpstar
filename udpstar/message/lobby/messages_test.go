@@ -27,8 +27,8 @@ func TestLenSetup(t *testing.T) {
 		msg.Slots[i].Name = strings.Repeat("a", MaxLenName)
 	}
 
-	var buf [1024]byte
-	size := msg.Put(buf[:])
+	buf := msg.Put(nil)
+	size := len(buf)
 
 	t.Logf("maximum size of Setup: %d", size)
 	if size > message.MaxMessageSize {

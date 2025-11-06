@@ -1,10 +1,11 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package story
 
 import (
 	"encoding/binary"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"io"
 	"time"
 )
 
@@ -35,16 +36,19 @@ func (m *HeaderClient) SetLatency(latency time.Duration) {
 
 const sizeOfHeaderClient = message.SizeOfToken + 4
 
-func (m *HeaderClient) Put(buf []byte) int {
-	binary.LittleEndian.PutUint32(buf[:message.SizeOfToken], uint32(m.ClientToken))
-	binary.LittleEndian.PutUint32(buf[message.SizeOfToken:message.SizeOfToken+4], m.Latency)
-	return sizeOfHeaderClient
+func (m *HeaderClient) Put(buf []byte) []byte {
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(m.ClientToken))
+	buf = binary.LittleEndian.AppendUint32(buf, m.Latency)
+	return buf
 }
 
-func (m *HeaderClient) Get(buf []byte) int {
+func (m *HeaderClient) Get(buf []byte) ([]byte, error) {
+	if len(buf) < sizeOfHeaderClient {
+		return nil, io.ErrUnexpectedEOF
+	}
 	m.ClientToken = message.Token(binary.LittleEndian.Uint32(buf[:message.SizeOfToken]))
 	m.Latency = binary.LittleEndian.Uint32(buf[message.SizeOfToken : 4+message.SizeOfToken])
-	return sizeOfHeaderClient
+	return buf[sizeOfHeaderClient:], nil
 }
 
 type HeaderServer struct {
@@ -61,12 +65,15 @@ func (m *HeaderServer) SetSessionToken(sessionToken message.Token) {
 
 const sizeOfHeaderServer = message.SizeOfToken
 
-func (m *HeaderServer) Put(buf []byte) int {
-	binary.LittleEndian.PutUint32(buf[:message.SizeOfToken], uint32(m.SessionToken))
-	return sizeOfHeaderServer
+func (m *HeaderServer) Put(buf []byte) []byte {
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(m.SessionToken))
+	return buf
 }
 
-func (m *HeaderServer) Get(buf []byte) int {
+func (m *HeaderServer) Get(buf []byte) ([]byte, error) {
+	if len(buf) < sizeOfHeaderServer {
+		return nil, io.ErrUnexpectedEOF
+	}
 	m.SessionToken = message.Token(binary.LittleEndian.Uint32(buf[:message.SizeOfToken]))
-	return sizeOfHeaderServer
+	return buf[sizeOfHeaderServer:], nil
 }

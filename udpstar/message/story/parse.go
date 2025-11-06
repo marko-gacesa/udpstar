@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package story
 
@@ -7,62 +7,53 @@ import "github.com/marko-gacesa/udpstar/udpstar/message"
 func checkType(s *message.Deserializer, t Type) bool {
 	var b byte
 	s.Get8(&b)
-	return Type(b) == t
+	return s.Error() == nil && Type(b) == t
 }
 
-func ParseServer(buf []byte) ServerMessage {
+func ParseServer(buf []byte) (m ServerMessage) {
 	if len(buf) < sizeServerBase {
 		return nil
 	}
 
 	switch t := Type(buf[5]); t {
 	case TypeTest:
-		var m TestServer
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &TestServer{}
 	case TypeAction:
-		var m ActionConfirm
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &ActionConfirm{}
 	case TypeStory:
-		var m StoryPack
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &StoryPack{}
 	case TypeLatencyReport:
-		var m LatencyReport
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &LatencyReport{}
+	default:
+		return nil
 	}
 
-	return nil
+	if _, err := m.Get(buf); err != nil {
+		return nil
+	}
+
+	return m
 }
 
-func ParseClient(buf []byte) ClientMessage {
+func ParseClient(buf []byte) (m ClientMessage) {
 	if len(buf) < sizeClientBase {
 		return nil
 	}
 
 	switch t := Type(buf[5]); t {
 	case TypeTest:
-		var m TestClient
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &TestClient{}
 	case TypeAction:
-		var m ActionPack
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &ActionPack{}
 	case TypeStory:
-		var m StoryConfirm
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &StoryConfirm{}
+	default:
+		return nil
 	}
 
-	return nil
+	if _, err := m.Get(buf); err != nil {
+		return nil
+	}
+
+	return m
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package lobby
 
@@ -7,44 +7,39 @@ import "github.com/marko-gacesa/udpstar/udpstar/message"
 func checkCommand(s *message.Deserializer, t Command) bool {
 	var b byte
 	s.Get8(&b)
-	return Command(b) == t
+	return s.Error() == nil && Command(b) == t
 }
 
-func ParseClient(buf []byte) ClientMessage {
+func ParseClient(buf []byte) (m ClientMessage) {
 	if len(buf) < sizeClientBase {
 		return nil
 	}
 
 	switch t := Command(buf[5]); t {
 	case CommandJoin:
-		var m Join
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &Join{}
 	case CommandLeave:
-		var m Leave
-		if m.Get(buf) > 0 {
-			return &m
-		}
-
+		m = &Leave{}
 	case CommandRequest:
-		var m Request
-		if m.Get(buf) > 0 {
-			return &m
-		}
+		m = &Request{}
+	default:
+		return nil
 	}
 
-	return nil
+	_, err := m.Get(buf)
+	if err != nil {
+		return nil
+	}
+
+	return m
 }
 
 func ParseServer(buf []byte) ServerMessage {
 	var msg Setup
-	if len(buf) < msg.Size() {
+	_, err := msg.Get(buf)
+	if err != nil {
 		return nil
 	}
-	if msg.Get(buf) > 0 {
-		return &msg
-	}
 
-	return nil
+	return &msg
 }

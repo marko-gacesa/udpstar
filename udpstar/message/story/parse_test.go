@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package story
 
@@ -45,13 +45,14 @@ func TestClientSerialize(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(msg.Type().String(), func(t *testing.T) {
-			size := msg.Put(buf[:])
+			a := msg.Put(buf[:0])
+			size := len(a)
 
 			if msg.Size() != size {
 				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
 			}
 
-			msgClone := ParseClient(buf[:size])
+			msgClone := ParseClient(a)
 
 			if !reflect.DeepEqual(msg, msgClone) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)
@@ -101,13 +102,14 @@ func TestServerSerialize(t *testing.T) {
 	var buf [1024]byte
 	for _, msg := range tests {
 		t.Run(msg.Type().String(), func(t *testing.T) {
-			size := msg.Put(buf[:])
+			a := msg.Put(buf[:0])
+			size := len(a)
 
 			if msg.Size() != size {
 				t.Errorf("size mismatch: msg=%d buf=%d", msg.Size(), size)
 			}
 
-			msgClone := ParseServer(buf[:size])
+			msgClone := ParseServer(a)
 
 			if !reflect.DeepEqual(msg, msgClone) {
 				t.Errorf("not equal: orig=%+v clone=%+v", msg, msgClone)

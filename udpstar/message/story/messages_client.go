@@ -1,8 +1,9 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package story
 
 import (
+	"errors"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
@@ -26,24 +27,24 @@ func (m *TestClient) Size() int {
 
 func (*TestClient) Type() Type { return TypeTest }
 
-func (m *TestClient) Put(buf []byte) int {
+func (m *TestClient) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStory)
 	s.Put8(byte(TypeTest))
 	s.Put(&m.HeaderClient)
 	s.PutBytes(m.Payload)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *TestClient) Get(buf []byte) int {
+func (m *TestClient) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryStory) && checkType(&s, TypeTest); !ok {
-		return 0
+		return nil, errors.New("invalid test message")
 	}
 	s.Get(&m.HeaderClient)
 	s.GetBytes(&m.Payload)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 // ActionPack is used to by an actor to issue a command to the server.
@@ -66,26 +67,26 @@ func (m *ActionPack) Size() int {
 
 func (*ActionPack) Type() Type { return TypeAction }
 
-func (m *ActionPack) Put(buf []byte) int {
+func (m *ActionPack) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStory)
 	s.Put8(byte(TypeAction))
 	s.Put(&m.HeaderClient)
-	s.Put(&m.ActorToken)
+	s.PutToken(m.ActorToken)
 	s.PutEntries(m.Actions)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *ActionPack) Get(buf []byte) int {
+func (m *ActionPack) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryStory) && checkType(&s, TypeAction); !ok {
-		return 0
+		return nil, errors.New("invalid action pack message")
 	}
 	s.Get(&m.HeaderClient)
-	s.Get(&m.ActorToken)
+	s.GetToken(&m.ActorToken)
 	s.GetEntries(&m.Actions)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 // StoryConfirm is used to confirm the last story message and to report the ones that are missing.
@@ -104,26 +105,26 @@ func (m *StoryConfirm) Size() int {
 
 func (*StoryConfirm) Type() Type { return TypeStory }
 
-func (m *StoryConfirm) Put(buf []byte) int {
+func (m *StoryConfirm) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStory)
 	s.Put8(byte(TypeStory))
 	s.Put(&m.HeaderClient)
-	s.Put(&m.StoryToken)
+	s.PutToken(m.StoryToken)
 	s.PutSequence(m.LastSequence)
 	s.PutRanges(m.Missing)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *StoryConfirm) Get(buf []byte) int {
+func (m *StoryConfirm) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryStory) && checkType(&s, TypeStory); !ok {
-		return 0
+		return nil, errors.New("invalid story confirm message")
 	}
 	s.Get(&m.HeaderClient)
-	s.Get(&m.StoryToken)
+	s.GetToken(&m.StoryToken)
 	s.GetSequence(&m.LastSequence)
 	s.GetRanges(&m.Missing)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }

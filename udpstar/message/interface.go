@@ -1,15 +1,11 @@
-// Copyright (c) 2023 by Marko Gaćeša
+// Copyright (c) 2023, 2025 by Marko Gaćeša
 
 package message
 
 type Putter interface {
-	Put([]byte) int
+	Put([]byte) []byte
 }
 
 type Getter interface {
-	Get([]byte) int
-}
-
-type Sizer interface {
-	Size() int
+	Get([]byte) ([]byte, error)
 }

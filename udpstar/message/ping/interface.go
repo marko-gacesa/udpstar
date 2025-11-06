@@ -1,4 +1,4 @@
-// Copyright (c) 2024 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package ping
 
@@ -9,5 +9,5 @@ import (
 type Message interface {
 	message.Getter
 	message.Putter
-	message.Sizer
+	Size() int
 }

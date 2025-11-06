@@ -1,4 +1,4 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package server
 
@@ -8,7 +8,6 @@ import (
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"github.com/marko-gacesa/udpstar/udpstar/util"
 	"log/slog"
 	"sync"
 	"time"
@@ -93,19 +92,17 @@ func (c *clientService) Start(ctx context.Context) error {
 				continue
 			}
 
-			func() {
-				defer util.Recover(c.log)
+			a := msg.Put(buffer[:0])
+			size := len(a)
 
-				size := msg.Put(buffer[:])
-				err := c.udpSender.Send(buffer[:size], addr)
-				if err != nil {
-					c.log.Error("failed to send message to client",
-						"addr", addr,
-						"type", msg.Type().String(),
-						"size", size,
-						"error", err.Error())
-				}
-			}()
+			err := c.udpSender.Send(a, addr)
+			if err != nil {
+				c.log.Error("failed to send message to client",
+					"addr", addr,
+					"type", msg.Type().String(),
+					"size", size,
+					"error", err.Error())
+			}
 		}
 	}
 }

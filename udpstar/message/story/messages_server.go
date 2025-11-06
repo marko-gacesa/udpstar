@@ -1,8 +1,9 @@
-// Copyright (c) 2023,2024 by Marko Gaćeša
+// Copyright (c) 2023-2025 by Marko Gaćeša
 
 package story
 
 import (
+	"errors"
 	"fmt"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
@@ -29,24 +30,24 @@ func (m *TestServer) Size() int {
 
 func (*TestServer) Type() Type { return TypeTest }
 
-func (m *TestServer) Put(buf []byte) int {
+func (m *TestServer) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStory)
 	s.Put8(byte(TypeTest))
 	s.Put(&m.HeaderServer)
 	s.PutBytes(m.Payload)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *TestServer) Get(buf []byte) int {
+func (m *TestServer) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryStory) && checkType(&s, TypeTest); !ok {
-		return 0
+		return nil, errors.New("invalid test message")
 	}
 	s.Get(&m.HeaderServer)
 	s.GetBytes(&m.Payload)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 // ActionConfirm is a message with which the server tells an actor client
@@ -66,28 +67,28 @@ func (m *ActionConfirm) Size() int {
 
 func (*ActionConfirm) Type() Type { return TypeAction }
 
-func (m *ActionConfirm) Put(buf []byte) int {
+func (m *ActionConfirm) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStory)
 	s.Put8(byte(TypeAction))
 	s.Put(&m.HeaderServer)
-	s.Put(&m.ActorToken)
+	s.PutToken(m.ActorToken)
 	s.PutSequence(m.LastSequence)
 	s.PutRanges(m.Missing)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *ActionConfirm) Get(buf []byte) int {
+func (m *ActionConfirm) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryStory) && checkType(&s, TypeAction); !ok {
-		return 0
+		return nil, errors.New("invalid action confirm message")
 	}
 	s.Get(&m.HeaderServer)
-	s.Get(&m.ActorToken)
+	s.GetToken(&m.ActorToken)
 	s.GetSequence(&m.LastSequence)
 	s.GetRanges(&m.Missing)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 // StoryPack is used to by the server to send story elements to all clients.
@@ -109,26 +110,26 @@ func (m *StoryPack) Size() int {
 
 func (*StoryPack) Type() Type { return TypeStory }
 
-func (m *StoryPack) Put(buf []byte) int {
+func (m *StoryPack) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStory)
 	s.Put8(byte(TypeStory))
 	s.Put(&m.HeaderServer)
-	s.Put(&m.StoryToken)
+	s.PutToken(m.StoryToken)
 	s.PutEntries(m.Stories)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *StoryPack) Get(buf []byte) int {
+func (m *StoryPack) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryStory) && checkType(&s, TypeStory); !ok {
-		return 0
+		return nil, errors.New("invalid story pack message")
 	}
 	s.Get(&m.HeaderServer)
-	s.Get(&m.StoryToken)
+	s.GetToken(&m.StoryToken)
 	s.GetEntries(&m.Stories)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 // LatencyReport is used to tell all clients about latency of every actor in the group.
@@ -156,48 +157,36 @@ func (m *LatencyReport) Size() int {
 
 func (*LatencyReport) Type() Type { return TypeLatencyReport }
 
-func (m *LatencyReportActor) Put(buf []byte) int {
-	s := message.NewSerializer(buf)
-	s.PutStr(m.Name)
-	s.Put8(uint8(m.State))
-	s.PutDuration(m.Latency)
-	return s.Len()
-}
-
-func (m *LatencyReportActor) Get(buf []byte) int {
-	s := message.NewDeserializer(buf)
-	s.GetStr(&m.Name)
-	s.Get8((*uint8)(&m.State))
-	s.GetDuration(&m.Latency)
-	return s.Len()
-}
-
-func (m *LatencyReport) Put(buf []byte) int {
+func (m *LatencyReport) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryStory)
 	s.Put8(byte(TypeLatencyReport))
 	s.Put(&m.HeaderServer)
 	s.Put8(uint8(len(m.Latencies)))
-	for i := 0; i < len(m.Latencies); i++ {
-		s.Put(&m.Latencies[i])
+	for i := range m.Latencies {
+		s.PutStr(m.Latencies[i].Name)
+		s.Put8(uint8(m.Latencies[i].State))
+		s.PutDuration(m.Latencies[i].Latency)
 	}
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *LatencyReport) Get(buf []byte) int {
+func (m *LatencyReport) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryStory) && checkType(&s, TypeLatencyReport); !ok {
-		return 0
+		return nil, errors.New("invalid latency report message")
 	}
 	s.Get(&m.HeaderServer)
 	var l byte
 	s.Get8(&l)
 	m.Latencies = make([]LatencyReportActor, l)
-	for i := byte(0); i < l; i++ {
-		s.Get(&m.Latencies[i])
+	for i := range l {
+		s.GetStr(&m.Latencies[i].Name)
+		s.Get8((*uint8)(&m.Latencies[i].State))
+		s.GetDuration(&m.Latencies[i].Latency)
 	}
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 func (m *LatencyReport) String() string {

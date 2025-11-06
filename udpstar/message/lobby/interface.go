@@ -1,4 +1,4 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package lobby
 
@@ -10,7 +10,7 @@ import (
 type Message interface {
 	message.Getter
 	message.Putter
-	message.Sizer
+	Size() int
 	GetLobbyToken() message.Token
 	SetLobbyToken(message.Token)
 }

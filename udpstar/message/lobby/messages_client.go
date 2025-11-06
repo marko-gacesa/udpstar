@@ -1,8 +1,9 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package lobby
 
 import (
+	"errors"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
@@ -31,7 +32,7 @@ func (m *Join) Size() int {
 		1 + len(m.Config)
 }
 
-func (m *Join) Put(buf []byte) int {
+func (m *Join) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryLobby)
@@ -41,20 +42,20 @@ func (m *Join) Put(buf []byte) int {
 	s.Put8(m.Slot)
 	s.PutStr(m.Name)
 	s.PutBytes(m.Config)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *Join) Get(buf []byte) int {
+func (m *Join) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby) && checkCommand(&s, CommandJoin); !ok {
-		return 0
+		return nil, errors.New("invalid join command")
 	}
 	s.Get(&m.HeaderClient)
 	s.GetToken(&m.ActorToken)
 	s.Get8(&m.Slot)
 	s.GetStr(&m.Name)
 	s.GetBytes(&m.Config)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 type Leave struct {
@@ -70,24 +71,24 @@ func (m *Leave) Size() int {
 	return sizeClientBase + message.SizeOfToken
 }
 
-func (m *Leave) Put(buf []byte) int {
+func (m *Leave) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryLobby)
 	s.Put8(byte(CommandLeave))
 	s.Put(&m.HeaderClient)
 	s.PutToken(m.ActorToken)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *Leave) Get(buf []byte) int {
+func (m *Leave) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby) && checkCommand(&s, CommandLeave); !ok {
-		return 0
+		return nil, errors.New("invalid leave command")
 	}
 	s.Get(&m.HeaderClient)
 	s.GetToken(&m.ActorToken)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }
 
 type Request struct {
@@ -102,20 +103,20 @@ func (m *Request) Size() int {
 	return sizeClientBase
 }
 
-func (m *Request) Put(buf []byte) int {
+func (m *Request) Put(buf []byte) []byte {
 	s := message.NewSerializer(buf)
 	s.PutPrefix()
 	s.PutCategory(CategoryLobby)
 	s.Put8(byte(CommandRequest))
 	s.Put(&m.HeaderClient)
-	return s.Len()
+	return s.Bytes()
 }
 
-func (m *Request) Get(buf []byte) int {
+func (m *Request) Get(buf []byte) ([]byte, error) {
 	s := message.NewDeserializer(buf)
 	if ok := s.CheckPrefix() && s.CheckCategory(CategoryLobby) && checkCommand(&s, CommandRequest); !ok {
-		return 0
+		return nil, errors.New("invalid request command")
 	}
 	s.Get(&m.HeaderClient)
-	return s.Len()
+	return s.Bytes(), s.Error()
 }

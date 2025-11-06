@@ -1,10 +1,11 @@
-// Copyright (c) 2024,2025 by Marko Gaćeša
+// Copyright (c) 2024, 2025 by Marko Gaćeša
 
 package lobby
 
 import (
 	"encoding/binary"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"io"
 	"time"
 )
 
@@ -40,18 +41,21 @@ func (m *HeaderClient) SetLatency(latency time.Duration) {
 
 const sizeOfHeaderClient = 2*message.SizeOfToken + 4
 
-func (m *HeaderClient) Put(buf []byte) int {
-	binary.LittleEndian.PutUint32(buf[:message.SizeOfToken], uint32(m.LobbyToken))
-	binary.LittleEndian.PutUint32(buf[message.SizeOfToken:2*message.SizeOfToken], uint32(m.ClientToken))
-	binary.LittleEndian.PutUint32(buf[2*message.SizeOfToken:2*message.SizeOfToken+4], m.Latency)
-	return sizeOfHeaderClient
+func (m *HeaderClient) Put(buf []byte) []byte {
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(m.LobbyToken))
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(m.ClientToken))
+	buf = binary.LittleEndian.AppendUint32(buf, m.Latency)
+	return buf
 }
 
-func (m *HeaderClient) Get(buf []byte) int {
+func (m *HeaderClient) Get(buf []byte) ([]byte, error) {
+	if len(buf) < sizeOfHeaderClient {
+		return nil, io.ErrUnexpectedEOF
+	}
 	m.LobbyToken = message.Token(binary.LittleEndian.Uint32(buf[:message.SizeOfToken]))
 	m.ClientToken = message.Token(binary.LittleEndian.Uint32(buf[message.SizeOfToken : 2*message.SizeOfToken]))
 	m.Latency = binary.LittleEndian.Uint32(buf[2*message.SizeOfToken : 2*message.SizeOfToken+4])
-	return sizeOfHeaderClient
+	return buf[sizeOfHeaderClient:], nil
 }
 
 type HeaderServer struct {
@@ -68,12 +72,15 @@ func (m *HeaderServer) SetLobbyToken(lobbyToken message.Token) {
 
 const sizeOfHeaderServer = message.SizeOfToken
 
-func (m *HeaderServer) Put(buf []byte) int {
-	binary.LittleEndian.PutUint32(buf[:message.SizeOfToken], uint32(m.LobbyToken))
-	return sizeOfHeaderServer
+func (m *HeaderServer) Put(buf []byte) []byte {
+	buf = binary.LittleEndian.AppendUint32(buf, uint32(m.LobbyToken))
+	return buf
 }
 
-func (m *HeaderServer) Get(buf []byte) int {
+func (m *HeaderServer) Get(buf []byte) ([]byte, error) {
+	if len(buf) < sizeOfHeaderServer {
+		return nil, io.ErrUnexpectedEOF
+	}
 	m.LobbyToken = message.Token(binary.LittleEndian.Uint32(buf[:message.SizeOfToken]))
-	return sizeOfHeaderServer
+	return buf[sizeOfHeaderServer:], nil
 }

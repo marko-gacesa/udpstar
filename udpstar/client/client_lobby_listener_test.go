@@ -63,10 +63,10 @@ func TestLobbyListener(t *testing.T) {
 
 	var buf [1024]byte
 
-	size := msg.Put(buf[:])
+	a := msg.Put(buf[:0])
 
 	// get the initial lobby
-	ll.HandleBroadcastMessages(buf[:size], serverAddr)
+	ll.HandleBroadcastMessages(a, serverAddr)
 
 	gotList, gotVersion = ll.List(gotVersion)
 	if wantListLen, wantVersion := 1, 1; len(gotList) != wantListLen || gotVersion != wantVersion {
@@ -107,7 +107,7 @@ func TestLobbyListener(t *testing.T) {
 	}
 
 	// get the same message again
-	ll.HandleBroadcastMessages(buf[:size], serverAddr)
+	ll.HandleBroadcastMessages(a, serverAddr)
 
 	gotList, gotVersion = ll.List(gotVersion)
 	if wantListLen, wantVersion := 0, 1; len(gotList) != wantListLen || gotVersion != wantVersion {
@@ -139,10 +139,10 @@ func TestLobbyListener(t *testing.T) {
 		State: lobbymessage.StateReady,
 	}
 
-	size = msg.Put(buf[:])
+	a = msg.Put(buf[:0])
 
 	// update the lobby
-	ll.HandleBroadcastMessages(buf[:size], serverAddr)
+	ll.HandleBroadcastMessages(a, serverAddr)
 
 	gotList, gotVersion = ll.List(gotVersion)
 	if wantListLen, wantVersion := 1, 2; len(gotList) != wantListLen || gotVersion != wantVersion {
