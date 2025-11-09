@@ -5,7 +5,7 @@ package client
 import (
 	"bytes"
 	"context"
-	"github.com/marko-gacesa/udpstar/channel"
+	"github.com/marko-gacesa/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"log/slog"

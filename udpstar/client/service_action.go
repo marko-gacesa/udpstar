@@ -4,7 +4,7 @@ package client
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/channel"
+	"github.com/marko-gacesa/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
