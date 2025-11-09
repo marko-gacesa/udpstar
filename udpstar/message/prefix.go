@@ -6,6 +6,7 @@ package message
 
 import "encoding/binary"
 
-var prefix = binary.LittleEndian.Uint32([]byte("<u*>"))
+// Prefix will be added to every serialized message and must be there for successful deserialization.
+var Prefix = binary.LittleEndian.Uint32([]byte("<u*>"))
 
 const SizeOfPrefix = 4

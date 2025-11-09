@@ -25,7 +25,7 @@ func (s Serializer) Bytes() []byte {
 }
 
 func (s *Serializer) PutPrefix() {
-	s.Put32(prefix)
+	s.Put32(Prefix)
 }
 
 func (s *Serializer) PutCategory(v Category) {
@@ -145,7 +145,7 @@ func (d Deserializer) Error() error {
 }
 
 func (s *Deserializer) CheckPrefix() bool {
-	ok := len(s.buf) >= 4 && prefix == binary.LittleEndian.Uint32(s.buf[:4])
+	ok := len(s.buf) >= 4 && Prefix == binary.LittleEndian.Uint32(s.buf[:4])
 	if !ok {
 		return false
 	}
