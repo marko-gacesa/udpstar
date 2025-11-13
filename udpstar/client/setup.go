@@ -153,7 +153,7 @@ func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error
 	count := byte(len(actorMap))
 	actors := make([]StoryActorInfo, count)
 	for idx, actor := range actorMap {
-		if idx < 0 || idx >= count {
+		if idx >= count {
 			return nil, fmt.Errorf("story actor index out of range: %d", idx)
 		}
 		actors[idx] = actor

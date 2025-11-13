@@ -126,8 +126,6 @@ func (r *Recent) RemoveFn(shouldRemove func(seq Sequence) bool) {
 
 	r.trimHead()
 	r.trimTail()
-
-	return
 }
 
 func (r *Recent) LastSeq() Sequence {
