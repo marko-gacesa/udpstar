@@ -6,11 +6,12 @@ package server
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"net"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 func TestServer(t *testing.T) {

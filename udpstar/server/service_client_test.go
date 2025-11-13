@@ -8,17 +8,19 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"github.com/marko-gacesa/channel"
-	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"golang.org/x/sync/errgroup"
+
+	"github.com/marko-gacesa/channel"
+	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 )
 
 type udpRecord struct {

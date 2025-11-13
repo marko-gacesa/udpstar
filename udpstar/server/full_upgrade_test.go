@@ -7,16 +7,17 @@ package server_test
 import (
 	"bytes"
 	"context"
-	"github.com/marko-gacesa/udpstar/udpstar"
-	"github.com/marko-gacesa/udpstar/udpstar/client"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	"github.com/marko-gacesa/udpstar/udpstar/server"
 	"log/slog"
 	"os"
 	"slices"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar"
+	"github.com/marko-gacesa/udpstar/udpstar/client"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"github.com/marko-gacesa/udpstar/udpstar/server"
 )
 
 func TestUpgrade(t *testing.T) {

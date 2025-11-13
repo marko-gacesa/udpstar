@@ -8,12 +8,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"golang.org/x/net/ipv4"
-	"golang.org/x/net/ipv6"
 	"net"
 	"sort"
 	"strings"
 	"time"
+
+	"golang.org/x/net/ipv4"
+	"golang.org/x/net/ipv6"
 )
 
 func ListenMulticast(

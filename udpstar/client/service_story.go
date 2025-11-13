@@ -6,14 +6,15 @@ package client
 
 import (
 	"context"
-	"github.com/marko-gacesa/channel"
-	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"log/slog"
 	"slices"
 	"sync/atomic"
 	"time"
+
+	"github.com/marko-gacesa/channel"
+	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 )
 
 type storyService struct {

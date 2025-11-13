@@ -5,9 +5,10 @@
 package server
 
 import (
+	"sync"
+
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
-	"sync"
 )
 
 type latencyData struct {

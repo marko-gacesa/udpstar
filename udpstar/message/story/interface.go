@@ -5,8 +5,9 @@
 package story
 
 import (
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 type Message interface {

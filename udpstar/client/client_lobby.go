@@ -7,15 +7,16 @@ package client
 import (
 	"bytes"
 	"context"
-	"github.com/marko-gacesa/udpstar/udpstar"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
-	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	"log/slog"
 	"slices"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
+	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 )
 
 // ******************************************************************************

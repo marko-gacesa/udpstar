@@ -6,13 +6,14 @@ package server
 
 import (
 	"context"
+	"log/slog"
+	"sync"
+	"time"
+
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"log/slog"
-	"sync"
-	"time"
 )
 
 type clientService struct {

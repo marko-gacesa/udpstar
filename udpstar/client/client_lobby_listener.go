@@ -5,13 +5,14 @@
 package client
 
 import (
-	"github.com/marko-gacesa/udpstar/udpstar"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	"log/slog"
 	"net"
 	"sync"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 )
 
 // ******************************************************************************

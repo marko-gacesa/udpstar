@@ -5,9 +5,10 @@
 package server
 
 import (
+	"sync"
+
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
-	"sync"
 )
 
 type localActorData struct {

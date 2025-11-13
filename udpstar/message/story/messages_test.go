@@ -5,12 +5,13 @@
 package story
 
 import (
-	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"math/rand"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 var r = rand.New(rand.NewSource(time.Now().UnixNano()))

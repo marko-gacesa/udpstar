@@ -6,8 +6,9 @@ package ping
 
 import (
 	"errors"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 const SizeOfPong = message.SizeOfPrefix + 1 + 4 + 8

@@ -7,15 +7,16 @@ package server
 import (
 	"context"
 	"errors"
-	"github.com/marko-gacesa/udpstar/udpstar"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	"log/slog"
 	"net"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 )
 
 func TestLobbyService(t *testing.T) {

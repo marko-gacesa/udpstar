@@ -6,14 +6,15 @@ package client
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/udpstar"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
-	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"log/slog"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 )
 
 // ******************************************************************************

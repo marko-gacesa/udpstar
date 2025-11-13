@@ -7,8 +7,9 @@ package client
 import (
 	"errors"
 	"fmt"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"math/bits"
+
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 type Session struct {

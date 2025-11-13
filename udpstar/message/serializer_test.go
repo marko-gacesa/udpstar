@@ -7,12 +7,13 @@ package message
 import (
 	"bytes"
 	"fmt"
-	"github.com/marko-gacesa/udpstar/sequence"
 	"io"
 	"reflect"
 	"slices"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/sequence"
 )
 
 func TestSerializer(t *testing.T) {

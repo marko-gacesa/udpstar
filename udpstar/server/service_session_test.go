@@ -6,15 +6,17 @@ package server
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"golang.org/x/sync/errgroup"
 	"log/slog"
 	"net"
 	"reflect"
 	"testing"
 	"time"
+
+	"golang.org/x/sync/errgroup"
+
+	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 )
 
 func TestSessionService_HandleStoryConfirm(t *testing.T) {

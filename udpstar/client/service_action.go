@@ -6,12 +6,13 @@ package client
 
 import (
 	"context"
+	"log/slog"
+	"time"
+
 	"github.com/marko-gacesa/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"log/slog"
-	"time"
 )
 
 type actionService struct {

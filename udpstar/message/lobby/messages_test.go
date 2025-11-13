@@ -5,9 +5,10 @@
 package lobby
 
 import (
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"strings"
 	"testing"
+
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 func getToken() message.Token {

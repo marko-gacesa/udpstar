@@ -6,9 +6,10 @@ package client
 
 import (
 	"context"
-	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	"sync/atomic"
 	"time"
+
+	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 )
 
 type pingService struct {

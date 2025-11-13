@@ -6,16 +6,17 @@ package server_test
 
 import (
 	"context"
-	"github.com/marko-gacesa/channel"
-	"github.com/marko-gacesa/udpstar/udpstar/client"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	"github.com/marko-gacesa/udpstar/udpstar/server"
 	"log/slog"
 	"os"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/channel"
+	"github.com/marko-gacesa/udpstar/udpstar/client"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	"github.com/marko-gacesa/udpstar/udpstar/server"
 )
 
 func TestSession(t *testing.T) {

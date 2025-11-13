@@ -7,10 +7,11 @@ package story
 import (
 	"errors"
 	"fmt"
-	"github.com/marko-gacesa/udpstar/sequence"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"strings"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/sequence"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 const sizeServerBase = message.SizeOfPrefix +

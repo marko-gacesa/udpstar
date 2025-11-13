@@ -5,11 +5,12 @@
 package story
 
 import (
-	"github.com/marko-gacesa/udpstar/sequence"
 	"math"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/sequence"
 )
 
 func TestClientSerialize(t *testing.T) {

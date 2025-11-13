@@ -6,10 +6,11 @@ package message
 
 import (
 	"encoding/binary"
-	"github.com/marko-gacesa/udpstar/sequence"
 	"io"
 	"math"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/sequence"
 )
 
 type Serializer struct {

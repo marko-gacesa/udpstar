@@ -6,14 +6,16 @@ package server
 
 import (
 	"context"
+	"log/slog"
+	"time"
+
+	"golang.org/x/sync/errgroup"
+
 	"github.com/marko-gacesa/channel"
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"golang.org/x/sync/errgroup"
-	"log/slog"
-	"time"
 )
 
 type SessionState byte

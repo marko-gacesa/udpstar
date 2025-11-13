@@ -7,13 +7,14 @@ package server_test
 import (
 	"bytes"
 	"errors"
-	"github.com/marko-gacesa/udpstar/udpstar/client"
-	"github.com/marko-gacesa/udpstar/udpstar/server"
 	"log/slog"
 	"net"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar/client"
+	"github.com/marko-gacesa/udpstar/udpstar/server"
 )
 
 var _ interface {

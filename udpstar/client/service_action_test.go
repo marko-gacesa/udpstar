@@ -6,14 +6,15 @@ package client
 
 import (
 	"context"
-	"github.com/marko-gacesa/channel"
-	"github.com/marko-gacesa/udpstar/sequence"
-	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 	"log/slog"
 	"reflect"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/channel"
+	"github.com/marko-gacesa/udpstar/sequence"
+	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
 )
 
 func TestActionService_Send(t *testing.T) {

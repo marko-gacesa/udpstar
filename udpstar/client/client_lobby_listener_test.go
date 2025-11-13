@@ -5,12 +5,13 @@
 package client
 
 import (
-	"github.com/marko-gacesa/udpstar/udpstar"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	"net"
 	"reflect"
 	"testing"
+
+	"github.com/marko-gacesa/udpstar/udpstar"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 )
 
 func TestLobbyListener(t *testing.T) {

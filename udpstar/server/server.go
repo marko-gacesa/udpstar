@@ -7,17 +7,18 @@ package server
 import (
 	"context"
 	"errors"
+	"log/slog"
+	"net"
+	"slices"
+	"sync"
+	"time"
+
 	"github.com/marko-gacesa/udpstar/udpstar"
 	"github.com/marko-gacesa/udpstar/udpstar/controller"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	pingmessage "github.com/marko-gacesa/udpstar/udpstar/message/ping"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"log/slog"
-	"net"
-	"slices"
-	"sync"
-	"time"
 )
 
 // ******************************************************************************

@@ -5,11 +5,12 @@
 package lobby
 
 import (
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"math/rand"
 	"reflect"
 	"testing"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 var r = rand.New(rand.NewSource(time.Now().UnixNano()))

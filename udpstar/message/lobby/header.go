@@ -6,9 +6,10 @@ package lobby
 
 import (
 	"encoding/binary"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
 	"io"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 
 type HeaderClient struct {

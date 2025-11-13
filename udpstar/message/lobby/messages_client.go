@@ -6,6 +6,7 @@ package lobby
 
 import (
 	"errors"
+
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
 

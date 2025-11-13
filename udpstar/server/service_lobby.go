@@ -6,12 +6,13 @@ package server
 
 import (
 	"context"
-	"github.com/marko-gacesa/udpstar/udpstar"
-	"github.com/marko-gacesa/udpstar/udpstar/message"
-	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	"log/slog"
 	"net"
 	"time"
+
+	"github.com/marko-gacesa/udpstar/udpstar"
+	"github.com/marko-gacesa/udpstar/udpstar/message"
+	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 )
 
 const lobbySendDelay = 10 * time.Millisecond

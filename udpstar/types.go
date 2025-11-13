@@ -5,11 +5,12 @@
 package udpstar
 
 import (
+	"net"
+	"time"
+
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 	lobbymessage "github.com/marko-gacesa/udpstar/udpstar/message/lobby"
 	storymessage "github.com/marko-gacesa/udpstar/udpstar/message/story"
-	"net"
-	"time"
 )
 
 type LobbyState = lobbymessage.State

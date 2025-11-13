@@ -6,6 +6,7 @@ package story
 
 import (
 	"errors"
+
 	"github.com/marko-gacesa/udpstar/sequence"
 	"github.com/marko-gacesa/udpstar/udpstar/message"
 )
