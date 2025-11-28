@@ -24,10 +24,6 @@ func (s *LobbySetup) Validate() error {
 		return errors.New("token is missing for the lobby")
 	}
 
-	if s.Name == "" {
-		return errors.New("lobby is missing the name")
-	}
-
 	if len(s.SlotStories) < 1 {
 		return errors.New("too few slots")
 	}
