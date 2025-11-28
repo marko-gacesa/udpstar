@@ -259,9 +259,17 @@ func (s *Server) Latencies(sessionToken message.Token) []udpstar.LatencyActor {
 	return slices.Clone(sessionSrvLatency.latencies)
 }
 
+func (s *Server) StartLobbyNoBroadcast(ctx context.Context, lobbySetup *LobbySetup) error {
+	return s.startLobby(ctx, lobbySetup, net.UDPAddr{})
+}
+
 // StartLobby starts lobby. A gathering area for the actors before the session starts.
 // To cancel the lobby, cancel the provided context.
 func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
+	return s.startLobby(ctx, lobbySetup, s.broadcastAddr)
+}
+
+func (s *Server) startLobby(ctx context.Context, lobbySetup *LobbySetup, broadcastAddr net.UDPAddr) error {
 	s.mx.Lock()
 	defer s.mx.Unlock()
 
@@ -273,7 +281,7 @@ func (s *Server) StartLobby(ctx context.Context, lobbySetup *LobbySetup) error {
 		return ErrDuplicateLobby
 	}
 
-	lobbySrv, err := newLobbyService(lobbySetup, s.broadcastAddr, s.sender, s.log)
+	lobbySrv, err := newLobbyService(lobbySetup, broadcastAddr, s.sender, s.log)
 	if err != nil {
 		return err
 	}
