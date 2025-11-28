@@ -261,6 +261,7 @@ func (s *lobbyService) localJoin(actorToken message.Token, slotIdx, localIdx byt
 		if s.slots[slotIdx].ActorToken == actorToken {
 			// the slot is not available, but it's claimed by the same actor
 			s.slots[slotIdx].local(actorToken, localIdx, name)
+			s.updateState()
 			return true
 		}
 
@@ -314,6 +315,7 @@ func (s *lobbyService) remoteJoin(msg *lobbymessage.Join, addr net.UDPAddr) bool
 			}
 
 			s.slots[slotIdx].remote(msg.ActorToken, msg.ClientToken, msg.Name, msg.Config)
+			s.updateState()
 
 			return true
 		}
