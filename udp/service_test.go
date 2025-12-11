@@ -9,6 +9,7 @@ import (
 	"errors"
 	"log/slog"
 	"net"
+	"os"
 	"slices"
 	"strings"
 	"sync"
@@ -32,14 +33,17 @@ func TestServiceSimple(t *testing.T) {
 	expected := []string{msg1, msg2, strings.ToUpper(msg3)}
 
 	var gotStates []ServerState
-	expectedStates := []ServerState{Starting, Started, Stopped}
+	expectedStates := []ServerState{Started, Stopped}
 	var mxState sync.Mutex
 
+	logger := slog.New(slog.NewTextHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelDebug}))
+
 	srv := NewService(ctxMain, port,
-		WithLogger(slog.Default()),
+		WithLogger(logger),
 		WithIdleTimeout(idleTimeout),
 		WithServerBreakPeriod(500*time.Millisecond),
 		WithServerStateCallback(func(state ServerState, err error) {
+			t.Logf("state change: %s", state.String())
 			mxState.Lock()
 			gotStates = append(gotStates, state)
 			mxState.Unlock()
@@ -51,6 +55,8 @@ func TestServiceSimple(t *testing.T) {
 
 	ctxTest1, test1Stop := context.WithCancel(ctxMain)
 	defer test1Stop()
+
+	t.Log("handle 1")
 
 	err := srv.Handle(ctxTest1, func(data []byte, addr net.UDPAddr) []byte {
 		got = append(got, string(data))
@@ -66,6 +72,9 @@ func TestServiceSimple(t *testing.T) {
 
 	ctxTest2, test2Stop := context.WithCancel(ctxMain)
 	defer test2Stop()
+
+	t.Log("handle 2")
+
 	err = srv.Handle(ctxTest2, func(data []byte, addr net.UDPAddr) []byte {
 		return nil
 	})
@@ -89,6 +98,7 @@ func TestServiceSimple(t *testing.T) {
 
 	time.Sleep(pause)
 
+	t.Log("aborting the first handler")
 	test1Stop() // abort the first handler
 
 	time.Sleep(pause)
@@ -97,6 +107,8 @@ func TestServiceSimple(t *testing.T) {
 
 	ctxTest3, test3Stop := context.WithCancel(ctxMain)
 	defer test3Stop()
+
+	t.Log("handle 3")
 
 	err = srv.Handle(ctxTest3, func(data []byte, addr net.UDPAddr) []byte {
 		got = append(got, strings.ToUpper(string(data)))

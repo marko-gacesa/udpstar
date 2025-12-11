@@ -15,15 +15,14 @@ import (
 
 var _ = interface {
 	Listen(ctx context.Context, port int, processFn func([]byte, net.UDPAddr) []byte) error
+	ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn func(data []byte, addr net.UDPAddr) []byte) error
 	Send(data []byte, addr net.UDPAddr) error
 }((*Server)(nil))
 
 const durBreakDefault = 5 * time.Second
 
 type Server struct {
-	connection     *net.UDPConn
-	connectingDone chan struct{}
-
+	connection  *net.UDPConn
 	durBreak    time.Duration
 	handleError func(error)
 	mx          sync.Mutex
@@ -31,9 +30,6 @@ type Server struct {
 
 func NewServer() *Server {
 	return &Server{
-		connection:     nil,
-		connectingDone: make(chan struct{}),
-
 		durBreak: durBreakDefault,
 		handleError: func(err error) {
 			log.Println(err)
@@ -61,7 +57,7 @@ func (s *Server) SetBreakPeriod(durBreak time.Duration) {
 	s.durBreak = durBreak
 }
 
-func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byte, addr net.UDPAddr) []byte) (err error) {
+func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byte, addr net.UDPAddr) []byte) error {
 	addr := &net.UDPAddr{
 		IP:   nil,
 		Port: port,
@@ -71,27 +67,16 @@ func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byt
 }
 
 func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn func(data []byte, addr net.UDPAddr) []byte) (err error) {
-	var connection *net.UDPConn
-
-	connection, err = net.ListenUDP("udp", addr)
+	connection, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		close(s.connectingDone)
-
-		err = fmt.Errorf("udp server: failed to listen: %w", FailedToStartError{err})
-		return
+		return fmt.Errorf("udp server: failed to listen: %w", FailedToStartError{err})
 	}
 
 	s.mx.Lock()
 	s.connection = connection
 	s.mx.Unlock()
 
-	close(s.connectingDone)
-
 	defer func() {
-		s.mx.Lock()
-		s.connection = nil
-		s.mx.Unlock()
-
 		errClose := connection.Close()
 		if errClose != nil {
 			errClose = fmt.Errorf("udp server: failed to close listener: %w", err)
@@ -101,40 +86,28 @@ func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn fu
 		}
 	}()
 
-	err = connection.SetReadDeadline(time.Now().Add(s.durBreak))
-	if err != nil {
-		err = fmt.Errorf("udp server: failed to set read deadline: %w", err)
-		return
+	if err := connection.SetReadDeadline(time.Now().Add(s.durBreak)); err != nil {
+		return fmt.Errorf("udp server: failed to set read deadline: %w", err)
 	}
 
 	const bufferSize = 4 << 10
 	buffer := [bufferSize]byte{}
 
 	for {
-		var n int
-		var clientAddr *net.UDPAddr
-
-		n, clientAddr, err = connection.ReadFromUDP(buffer[:])
-
+		n, clientAddr, err := connection.ReadFromUDP(buffer[:])
 		if errTimeout, ok := err.(net.Error); ok && errTimeout.Timeout() {
-			select {
-			case <-ctx.Done():
-				err = ctx.Err()
-				return
-			default:
+			if err := ctx.Err(); err != nil {
+				return err
 			}
 
-			err = connection.SetReadDeadline(time.Now().Add(s.durBreak))
-			if err != nil {
-				err = fmt.Errorf("udp server: failed to set read deadline: %w", err)
-				return
+			if err := connection.SetReadDeadline(time.Now().Add(s.durBreak)); err != nil {
+				return fmt.Errorf("udp server: failed to set read deadline: %w", err)
 			}
 
 			continue
 		}
 		if err != nil {
-			err = fmt.Errorf("udp server: failed to listen: %w", err)
-			s.handleError(err)
+			s.handleError(fmt.Errorf("udp server: failed to listen: %w", err))
 			continue
 		}
 
@@ -144,10 +117,8 @@ func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn fu
 			continue
 		}
 
-		_, err = connection.WriteToUDP(response, clientAddr)
-		if err != nil {
-			err = fmt.Errorf("udp server: failed to respond to %s: %w", clientAddr.String(), err)
-			s.handleError(err)
+		if _, err := connection.WriteToUDP(response, clientAddr); err != nil {
+			s.handleError(fmt.Errorf("udp server: failed to respond to %s: %w", clientAddr.String(), err))
 			continue
 		}
 	}
@@ -162,19 +133,12 @@ func (s *Server) Send(data []byte, addr net.UDPAddr) error {
 		return fmt.Errorf("udp server: connection is nil")
 	}
 
-	_, err := connection.WriteToUDP(data, &addr)
-	if err != nil {
+	if _, err := connection.WriteToUDP(data, &addr); err != nil {
 		err = fmt.Errorf("udp server: failed to send message to %s: %w", addr.String(), err)
 		return err
 	}
 
 	return nil
-}
-
-func (s *Server) getConnection() *net.UDPConn {
-	s.mx.Lock()
-	defer s.mx.Unlock()
-	return s.connection
 }
 
 type FailedToStartError struct {

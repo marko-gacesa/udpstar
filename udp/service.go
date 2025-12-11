@@ -29,16 +29,13 @@ var (
 type ServerState byte
 
 const (
-	Starting ServerState = iota
-	Started
+	Started ServerState = iota
 	Stopped
 	Failed
 )
 
 func (s ServerState) String() string {
 	switch s {
-	case Starting:
-		return "starting"
 	case Started:
 		return "started"
 	case Stopped:
@@ -51,13 +48,17 @@ func (s ServerState) String() string {
 }
 
 type Service struct {
-	mainDone    <-chan struct{}
+	mainCtx context.Context
+
 	port        int
 	handlerCh   chan handler
 	serverRunCh chan struct{}
-	timer       *time.Timer
-	mx          sync.Mutex
-	wg          sync.WaitGroup
+
+	timerReset chan struct{}
+	timerStop  chan struct{}
+
+	mx sync.Mutex
+	wg sync.WaitGroup
 
 	logger              *slog.Logger
 	idleTimeout         time.Duration
@@ -72,15 +73,13 @@ type Service struct {
 }
 
 func NewService(mainCtx context.Context, port int, options ...func(*Service)) *Service {
-	t := time.NewTimer(time.Hour)
-	t.Stop()
-
 	s := &Service{
-		mainDone:    mainCtx.Done(),
+		mainCtx:     mainCtx,
 		port:        port,
 		handlerCh:   make(chan handler),
 		serverRunCh: make(chan struct{}),
-		timer:       t,
+		timerReset:  make(chan struct{}),
+		timerStop:   make(chan struct{}),
 		mx:          sync.Mutex{},
 		wg:          sync.WaitGroup{},
 		logger:      nil,
@@ -95,10 +94,9 @@ func NewService(mainCtx context.Context, port int, options ...func(*Service)) *S
 		s.serverStateCallback = func(s ServerState, err error) {}
 	}
 
-	s.wg.Add(3)
+	s.wg.Add(2)
 	go s.runServerLoop()
 	go s.acceptHandlerLoop()
-	go s.timerLoop()
 
 	return s
 }
@@ -134,12 +132,9 @@ type handler struct {
 
 func (s *Service) Handle(ctx context.Context, fn func(data []byte, addr net.UDPAddr) []byte) error {
 	select {
-	case <-s.mainDone:
+	case <-s.mainCtx.Done():
 		return nil
-	case s.handlerCh <- handler{
-		fn:   fn,
-		done: ctx.Done(),
-	}:
+	case s.handlerCh <- handler{fn: fn, done: ctx.Done()}:
 		return nil
 	default:
 		return ErrBusy
@@ -164,53 +159,59 @@ func (s *Service) Send(data []byte, addr net.UDPAddr) error {
 }
 
 func (s *Service) acceptHandlerLoop() {
+	timer := time.NewTimer(time.Hour)
+	timer.Stop()
+
 	defer s.wg.Done()
 	for {
-		var h handler
-
 		select {
-		case <-s.mainDone:
+		case <-s.mainCtx.Done():
+			timer.Stop()
 			return
-		case h = <-s.handlerCh:
+
+		case h := <-s.handlerCh:
+			timer.Stop()
+
+			s.mx.Lock()
+			s.handler = h.fn
+			s.mx.Unlock()
+
+			// signal the server to start, if it's not already running
+			select {
+			case s.serverRunCh <- struct{}{}:
+			default:
+			}
+
+			// wait for handler to finish
+			select {
+			case <-s.mainCtx.Done():
+				return
+			case <-h.done:
+			}
+
+			s.mx.Lock()
+			s.handler = nil
+			s.mx.Unlock()
+
+			timer.Reset(s.idleTimeout)
+
+		case <-timer.C:
+			s.mx.Lock()
+			serverStop := s.udpServerStop
+			s.mx.Unlock()
+
+			if serverStop != nil {
+				s.udpServerStop()
+			}
 		}
-
-		s.acceptHandler(h)
 	}
-}
-
-func (s *Service) acceptHandler(h handler) {
-	s.timerStop()
-
-	// signal the server to start, if it's not already running
-	select {
-	case s.serverRunCh <- struct{}{}:
-	default:
-	}
-
-	s.mx.Lock()
-	s.handler = h.fn
-	s.mx.Unlock()
-
-	// wait for handler to finish
-	select {
-	case <-s.mainDone:
-		return
-	case <-h.done:
-	}
-
-	s.mx.Lock()
-	s.handler = nil
-	s.mx.Unlock()
-
-	// reset the idle server time, after this the server will shut down
-	s.timer.Reset(s.idleTimeout)
 }
 
 func (s *Service) runServerLoop() {
 	defer s.wg.Done()
 	for {
 		select {
-		case <-s.mainDone:
+		case <-s.mainCtx.Done():
 			return
 		case <-s.serverRunCh:
 			s.runServer()
@@ -219,18 +220,10 @@ func (s *Service) runServerLoop() {
 }
 
 func (s *Service) runServer() {
-	s.serverStateCallback(Starting, nil)
+	s.serverStateCallback(Started, nil)
 	s.logger.Debug("udp server starting", "port", s.port)
 
-	ctx, udpServerStop := context.WithCancel(context.Background())
-
-	go func() {
-		select {
-		case <-s.mainDone:
-			udpServerStop()
-		case <-ctx.Done():
-		}
-	}()
+	ctx, udpServerStop := context.WithCancel(s.mainCtx)
 
 	udpServer := NewServer()
 	udpServer.SetHandleError(func(err error) {
@@ -244,25 +237,7 @@ func (s *Service) runServer() {
 	s.udpServerDone = ctx.Done()
 	s.mx.Unlock()
 
-	go func() {
-		select {
-		case <-s.mainDone:
-		case <-ctx.Done():
-		case <-udpServer.connectingDone:
-			if udpServer.getConnection() != nil {
-				s.serverStateCallback(Started, nil)
-			}
-		}
-	}()
-
 	err := udpServer.Listen(ctx, s.port, func(data []byte, addr net.UDPAddr) []byte {
-		defer func() {
-			if r := recover(); r != nil {
-				message := fmt.Sprintf("panic:\n[%T] %v\n%s\n", r, r, debug.Stack())
-				s.logger.Error(message)
-			}
-		}()
-
 		s.mx.Lock()
 		h := s.handler
 		s.mx.Unlock()
@@ -270,6 +245,13 @@ func (s *Service) runServer() {
 		if h == nil {
 			return nil
 		}
+
+		defer func() {
+			if r := recover(); r != nil {
+				message := fmt.Sprintf("panic:\n[%T] %v\n%s\n", r, r, debug.Stack())
+				s.logger.Error(message)
+			}
+		}()
 
 		return h(data, addr)
 	})
@@ -280,33 +262,9 @@ func (s *Service) runServer() {
 		s.serverStateCallback(Stopped, err)
 	}
 
-	s.timerStop()
-
 	s.mx.Lock()
 	s.udpServer = nil
 	s.udpServerStop = nil
 	s.udpServerDone = nil
 	s.mx.Unlock()
-}
-
-func (s *Service) timerLoop() {
-	defer s.wg.Done()
-	for {
-		select {
-		case <-s.mainDone:
-			return
-		case <-s.timer.C:
-			s.mx.Lock()
-			serverStop := s.udpServerStop
-			s.mx.Unlock()
-
-			if serverStop != nil {
-				s.udpServerStop()
-			}
-		}
-	}
-}
-
-func (s *Service) timerStop() {
-	s.timer.Stop()
 }
