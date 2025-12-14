@@ -166,10 +166,6 @@ func (s *Session) Validate() error {
 			}
 			remoteActors[a.Token] = struct{}{}
 
-			if a.Name == "" {
-				return fmt.Errorf("remote actor name is missing for client %d", i)
-			}
-
 			if a.Config == nil {
 				return fmt.Errorf("remote actor config is missing for client %d", i)
 			}
@@ -263,7 +259,7 @@ func (s *Session) StoryActors(storyToken message.Token) ([]StoryActorInfo, error
 	count := byte(len(actorMap))
 	actors := make([]StoryActorInfo, count)
 	for idx, actor := range actorMap {
-		if idx < 0 || idx >= count {
+		if idx >= count {
 			return nil, fmt.Errorf("story actor index out of range: %d", idx)
 		}
 		actors[idx] = actor

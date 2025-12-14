@@ -100,10 +100,6 @@ func (s *Session) Validate() error {
 			return fmt.Errorf("actor %d linked to unknown story", i)
 		}
 
-		if a.Name == "" {
-			return fmt.Errorf("actor %d has no name", i)
-		}
-
 		mask := 1 << a.Index
 
 		if storyActors[a.Story.Token]&mask != 0 {
