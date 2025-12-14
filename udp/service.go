@@ -69,7 +69,6 @@ type Service struct {
 
 	udpServer     *Server
 	udpServerStop context.CancelFunc
-	udpServerDone <-chan struct{}
 }
 
 func NewService(mainCtx context.Context, port int, options ...func(*Service)) *Service {
@@ -234,7 +233,6 @@ func (s *Service) runServer() {
 	s.mx.Lock()
 	s.udpServer = udpServer
 	s.udpServerStop = udpServerStop
-	s.udpServerDone = ctx.Done()
 	s.mx.Unlock()
 
 	err := udpServer.Listen(ctx, s.port, func(data []byte, addr net.UDPAddr) []byte {
@@ -255,16 +253,16 @@ func (s *Service) runServer() {
 
 		return h(data, addr)
 	})
+
+	s.mx.Lock()
+	s.udpServer = nil
+	s.udpServerStop = nil
+	s.mx.Unlock()
+
 	if err != nil && !errors.Is(err, context.Canceled) {
 		s.serverStateCallback(Failed, err)
 		s.logger.Error("UDP server failed", "err", err.Error())
 	} else {
 		s.serverStateCallback(Stopped, err)
 	}
-
-	s.mx.Lock()
-	s.udpServer = nil
-	s.udpServerStop = nil
-	s.udpServerDone = nil
-	s.mx.Unlock()
 }

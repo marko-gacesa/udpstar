@@ -6,6 +6,7 @@ package udp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
@@ -49,12 +50,9 @@ func (s *Server) SetHandleError(handleError func(error)) {
 }
 
 func (s *Server) SetBreakPeriod(durBreak time.Duration) {
-	if durBreak <= 0 {
-		s.durBreak = durBreakDefault
-		return
+	if durBreak > 0 {
+		s.durBreak = durBreak
 	}
-
-	s.durBreak = durBreak
 }
 
 func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byte, addr net.UDPAddr) []byte) error {
@@ -66,7 +64,7 @@ func (s *Server) Listen(ctx context.Context, port int, processFn func(data []byt
 	return s.ListenAddr(ctx, addr, processFn)
 }
 
-func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn func(data []byte, addr net.UDPAddr) []byte) (err error) {
+func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn func(data []byte, addr net.UDPAddr) []byte) error {
 	connection, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		return fmt.Errorf("udp server: failed to listen: %w", FailedToStartError{err})
@@ -76,39 +74,39 @@ func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn fu
 	s.connection = connection
 	s.mx.Unlock()
 
-	defer func() {
-		errClose := connection.Close()
-		if errClose != nil {
-			errClose = fmt.Errorf("udp server: failed to close listener: %w", err)
-			if err == nil {
-				err = errClose
-			}
-		}
-	}()
+	go func() {
+		<-ctx.Done()
 
-	if err := connection.SetReadDeadline(time.Now().Add(s.durBreak)); err != nil {
-		return fmt.Errorf("udp server: failed to set read deadline: %w", err)
-	}
+		s.mx.Lock()
+		s.connection = nil
+		s.mx.Unlock()
+
+		connection.SetReadDeadline(time.Now())
+		connection.Close()
+	}()
 
 	const bufferSize = 4 << 10
 	buffer := [bufferSize]byte{}
 
 	for {
-		n, clientAddr, err := connection.ReadFromUDP(buffer[:])
-		if errTimeout, ok := err.(net.Error); ok && errTimeout.Timeout() {
-			if err := ctx.Err(); err != nil {
-				return err
-			}
-
-			if err := connection.SetReadDeadline(time.Now().Add(s.durBreak)); err != nil {
-				return fmt.Errorf("udp server: failed to set read deadline: %w", err)
-			}
-
-			continue
+		if err := connection.SetReadDeadline(time.Now().Add(s.durBreak)); err != nil {
+			return fmt.Errorf("udp server: failed to set read deadline: %w", err)
 		}
+
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
+		n, clientAddr, err := connection.ReadFromUDP(buffer[:])
 		if err != nil {
-			s.handleError(fmt.Errorf("udp server: failed to listen: %w", err))
-			continue
+			if errTimeout, ok := err.(net.Error); ok && errTimeout.Timeout() {
+				continue
+			}
+			if errors.Is(err, net.ErrClosed) {
+				return nil
+			}
+
+			return err
 		}
 
 		data := buffer[:n]
