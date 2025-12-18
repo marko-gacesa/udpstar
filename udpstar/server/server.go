@@ -6,6 +6,7 @@ package server
 
 import (
 	"context"
+	"encoding/hex"
 	"errors"
 	"log/slog"
 	"net"
@@ -117,13 +118,13 @@ func (s *Server) Start(ctx context.Context) {
 	s.mx.Lock()
 
 	for sessionToken, entry := range s.sessionMap {
-		s.log.Info("aborting session...",
+		s.log.Debug("aborting session...",
 			"session", sessionToken)
 		entry.cancelFn()
 	}
 
 	for lobbyToken, entry := range s.lobbyMap {
-		s.log.Info("aborting lobby...",
+		s.log.Debug("aborting lobby...",
 			"lobby", lobbyToken)
 		entry.cancelFn()
 	}
@@ -149,7 +150,7 @@ func (s *Server) HandleIncomingMessages(data []byte, addr net.UDPAddr) []byte {
 	} else if msgLobby := lobbymessage.ParseClient(data); msgLobby != nil {
 		s.handleLobby(msgLobby, addr)
 	} else {
-		s.log.Warn("server received unrecognized message",
+		s.log.Debug("server received unrecognized message",
 			"addr", addr)
 	}
 
@@ -500,7 +501,7 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 	client, ok := s.clientMap[clientToken]
 	s.mx.Unlock()
 	if !ok {
-		s.log.Warn("unknown client",
+		s.log.Debug("unknown client",
 			"addr", addr,
 			"msg", msgType.String(),
 			"client", clientToken)
@@ -526,7 +527,7 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 			"msg", msgType,
 			"client", clientToken,
 			"session", sessionToken,
-			"payload", msgTest.Payload)
+			"payload", hex.EncodeToString(msgTest.Payload))
 
 	case storymessage.TypeAction:
 		msgActionPack := msg.(*storymessage.ActionPack)
@@ -566,7 +567,7 @@ func (s *Server) handleStoryMessage(msg storymessage.ClientMessage, addr net.UDP
 
 		msgStoryPack, err := client.Session.HandleStoryConfirm(client, msgStoryConfirm)
 		if err != nil {
-			s.log.Error("failed to handle confirm story",
+			s.log.Warn("failed to handle confirm story",
 				"addr", addr,
 				"msg", msgType.String(),
 				"client", clientToken,
@@ -596,7 +597,7 @@ func (s *Server) handleLobby(msg lobbymessage.ClientMessage, addr net.UDPAddr) {
 	lobby, ok := s.lobbyMap[lobbyToken]
 	s.mx.Unlock()
 	if !ok {
-		s.log.Warn("unknown lobby",
+		s.log.Debug("unknown lobby",
 			"addr", addr,
 			"lobby", lobbyToken,
 			"client", msg.GetClientToken())

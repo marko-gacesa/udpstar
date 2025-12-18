@@ -6,6 +6,7 @@ package client
 
 import (
 	"context"
+	"encoding/hex"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -132,13 +133,14 @@ func (c *Client) Start(ctx context.Context) {
 			size := len(a)
 
 			if size > message.MaxMessageSize {
-				c.log.Warn("sending large message",
+				c.log.Debug("client sends large message",
+					"type", msg.Type().String(),
+					"size", size)
+			} else {
+				c.log.Debug("client sends message",
+					"type", msg.Type().String(),
 					"size", size)
 			}
-
-			c.log.Debug("client sends message",
-				"type", msg.Type().String(),
-				"size", size)
 
 			err := c.sender.Send(a)
 			if err != nil {
@@ -176,13 +178,13 @@ func (c *Client) Start(ctx context.Context) {
 	close(c.pingCh)
 	close(c.sendCh)
 
-	c.log.Info("client stopped")
+	c.log.Debug("client stopped")
 }
 
 // HandleIncomingMessages handles incoming network messages intended for this client.
 func (c *Client) HandleIncomingMessages(data []byte) {
 	if len(data) == 0 {
-		c.log.Warn("received empty message")
+		c.log.Debug("received empty message")
 		return
 	}
 
@@ -193,7 +195,7 @@ func (c *Client) HandleIncomingMessages(data []byte) {
 
 	if msg := storymessage.ParseServer(data); msg != nil {
 		if msg.GetSessionToken() != c.sessionToken {
-			c.log.Warn("received message for wrong session",
+			c.log.Debug("received message for wrong session",
 				"wrong_session", msg.GetSessionToken(),
 				"type", msg.Type())
 			return
@@ -203,7 +205,7 @@ func (c *Client) HandleIncomingMessages(data []byte) {
 		return
 	}
 
-	c.log.Warn("client received unrecognized message")
+	c.log.Debug("client received unrecognized message")
 }
 
 func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
@@ -214,7 +216,7 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 	case storymessage.TypeTest:
 		msgTest := msg.(*storymessage.TestServer)
 		c.log.Info("received test message",
-			"payload", msgTest.Payload)
+			"payload", hex.EncodeToString(msgTest.Payload))
 
 	case storymessage.TypeAction:
 		msgActionConfirm := msg.(*storymessage.ActionConfirm)
@@ -242,7 +244,7 @@ func (c *Client) handleStoryMessage(msg storymessage.ServerMessage) {
 		c.latencyMx.Unlock()
 
 	default:
-		c.log.Warn("received message of unknown type",
+		c.log.Debug("received message of unknown type",
 			"type", msgType)
 	}
 }

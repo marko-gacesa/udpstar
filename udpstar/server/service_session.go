@@ -319,7 +319,7 @@ func (s *sessionService) updateState() *storymessage.LatencyReport {
 
 	if s.controller != nil {
 		if oldState == SessionStateNotInSync && newState != SessionStateNotInSync {
-			s.log.Info("session resumable - again in sync")
+			s.log.Info("session resumeable - again in sync")
 			s.controller.Resume()
 		} else if oldState != SessionStateNotInSync && newState == SessionStateNotInSync {
 			s.log.Info("session suspended - not in sync")

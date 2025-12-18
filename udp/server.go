@@ -81,8 +81,8 @@ func (s *Server) ListenAddr(ctx context.Context, addr *net.UDPAddr, processFn fu
 		s.connection = nil
 		s.mx.Unlock()
 
-		connection.SetReadDeadline(time.Now())
-		connection.Close()
+		_ = connection.SetReadDeadline(time.Now())
+		_ = connection.Close()
 	}()
 
 	const bufferSize = 4 << 10

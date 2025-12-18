@@ -117,7 +117,7 @@ func (s *actionService) Start(ctx context.Context) {
 			}
 
 			if actor == nil {
-				s.log.Warn("received action confirm message for wrong actor")
+				s.log.Debug("received action confirm message for wrong actor")
 				continue
 			}
 

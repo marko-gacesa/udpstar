@@ -89,7 +89,7 @@ func (s *storyService) Start(ctx context.Context) {
 			}
 
 			if story == nil {
-				s.log.Warn("received story pack message for wrong story")
+				s.log.Debug("received story pack message for wrong story")
 				continue
 			}
 

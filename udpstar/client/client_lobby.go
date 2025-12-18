@@ -155,7 +155,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 			size := len(a)
 
 			if size > message.MaxMessageSize {
-				c.log.Warn("client sends large message",
+				c.log.Debug("client sends large message",
 					"command", msg.Command().String(),
 					"size", size)
 			} else {
@@ -218,7 +218,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 	close(c.pingCh)
 	close(c.sendCh)
 
-	c.log.Info("lobby client stopped")
+	c.log.Debug("lobby client stopped")
 
 	c.dataMx.Lock()
 	defer c.dataMx.Unlock()
@@ -266,7 +266,7 @@ func (c *Lobby) Start(ctx context.Context) *Session {
 // HandleIncomingMessages handles incoming network messages intended for this client.
 func (c *Lobby) HandleIncomingMessages(data []byte) {
 	if len(data) == 0 {
-		c.log.Warn("received empty message")
+		c.log.Debug("received empty message")
 		return
 	}
 
@@ -277,14 +277,14 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 
 	if msg := lobbymessage.ParseServer(data); msg != nil {
 		if msg.GetLobbyToken() != c.lobbyToken {
-			c.log.Warn("received message for wrong lobby",
+			c.log.Debug("received message for wrong lobby",
 				"wrong_lobby", msg.GetLobbyToken())
 			return
 		}
 
 		msgSetup, ok := msg.(*lobbymessage.Setup)
 		if !ok {
-			c.log.Warn("client lobby received unrecognized message")
+			c.log.Debug("client lobby received unrecognized message")
 			return
 		}
 
@@ -293,7 +293,7 @@ func (c *Lobby) HandleIncomingMessages(data []byte) {
 		return
 	}
 
-	c.log.Warn("received unrecognized message")
+	c.log.Debug("received unrecognized message")
 }
 
 // Join sends a join request message to the server.
