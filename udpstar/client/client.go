@@ -1,4 +1,4 @@
-// Copyright (c) 2023-2025 by Marko Gaćeša.
+// Copyright (c) 2023-2026 by Marko Gaćeša.
 // Licensed under the Apache License, Version 2.0.
 // See the LICENSE file or http://www.apache.org/licenses/LICENSE-2.0 for details.
 
@@ -269,5 +269,9 @@ func (c *Client) Latencies() udpstar.LatencyInfo {
 }
 
 func (c *Client) SinceLastServerMessage() time.Duration {
-	return time.Duration(time.Now().UnixNano() - c.lastMessage.Load())
+	lastMessage := c.lastMessage.Load()
+	if lastMessage == 0 {
+		return 0
+	}
+	return time.Duration(time.Now().UnixNano() - lastMessage)
 }
